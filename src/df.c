@@ -117,19 +117,26 @@ static bool print_grand_total;
 static struct fs_usage grand_fsu;
 
 /* Display modes.  */
-enum { DEFAULT_MODE, INODES_MODE, HUMAN_MODE, POSIX_MODE, NMODES };
+enum
+{
+  DEFAULT_MODE,
+  INODES_MODE,
+  HUMAN_MODE,
+  POSIX_MODE,
+  NMODES
+};
 static int header_mode = DEFAULT_MODE;
 
 /* Displayable fields.  */
 enum
 {
-  DEV_FIELD,   /* file system */
-  TYPE_FIELD,  /* FS type */
-  TOTAL_FIELD, /* blocks or inodes */
-  USED_FIELD,  /* ditto */
-  FREE_FIELD,  /* ditto */
-  PCENT_FIELD, /* percent used */
-  MNT_FIELD,   /* mount point */
+  SOURCE_FIELD, /* file system */
+  FSTYPE_FIELD, /* FS type */
+  TOTAL_FIELD,  /* blocks or inodes */
+  USED_FIELD,   /* ditto */
+  AVAIL_FIELD,  /* ditto */
+  PCENT_FIELD,  /* percent used */
+  TARGET_FIELD, /* mount point */
   NFIELDS
 };
 
@@ -237,12 +244,12 @@ print_table (void)
           if (!cell) /* Missing type column, or mount point etc. */
             continue;
 
-          /* Note the DEV_FIELD used to be displayed on it's own line
+          /* Note the SOURCE_FIELD used to be displayed on it's own line
              if (!posix_format && mbswidth (cell) > 20), but that
              functionality is probably more problematic than helpful.  */
           if (field != 0)
             putchar (' ');
-          if (field == MNT_FIELD) /* The last one.  */
+          if (field == TARGET_FIELD) /* The last one.  */
             fputs (cell, stdout);
           else
             {
@@ -271,7 +278,7 @@ get_header (void)
 
   for (field = 0; field < NFIELDS; field++)
     {
-      if (field == TYPE_FIELD && !print_type)
+      if (field == FSTYPE_FIELD && !print_type)
         {
           table[nrows-1][field] = NULL;
           continue;
@@ -588,11 +595,11 @@ get_dev (char const *disk, char const *mount_point,
     {
       switch (field)
         {
-        case DEV_FIELD:
+        case SOURCE_FIELD:
           cell = dev_name;
           break;
 
-        case TYPE_FIELD:
+        case FSTYPE_FIELD:
           cell = print_type ? xstrdup (fstype) : NULL;
           break;
 
@@ -604,7 +611,7 @@ get_dev (char const *disk, char const *mount_point,
           cell = xstrdup (df_readable (negate_used, used, buf,
                                        input_units, output_units));
           break;
-        case FREE_FIELD:
+        case AVAIL_FIELD:
           cell = xstrdup (df_readable (negate_available, available, buf,
                                        input_units, output_units));
           break;
@@ -656,7 +663,7 @@ get_dev (char const *disk, char const *mount_point,
 
           break;
 
-        case MNT_FIELD:
+        case TARGET_FIELD:
           if (mount_point)
             {
 #ifdef HIDE_AUTOMOUNT_PREFIX
