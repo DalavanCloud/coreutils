@@ -515,12 +515,8 @@ get_dev (char const *disk, char const *mount_point,
   if (fsu.fsu_blocks == 0 && !show_all_fs && !show_listed_fs)
     return;
 
-  if (! file_systems_processed)
-    {
-      if (! force_fsu)
-        file_systems_processed = true;
-      get_header ();
-    }
+  if (! force_fsu)
+    file_systems_processed = true;
 
   alloc_table_row ();
 
@@ -1122,6 +1118,8 @@ main (int argc, char **argv)
   if (require_sync)
     sync ();
 
+  get_header ();
+
   if (optind < argc)
     {
       int i;
@@ -1143,7 +1141,8 @@ main (int argc, char **argv)
       get_dev ("total", NULL, NULL, NULL, false, false, &grand_fsu, false);
     }
 
-  print_table ();
+  if (file_systems_processed)
+    print_table ();
 
   /* Print the "no FS processed" diagnostic only if there was no preceding
      diagnostic, e.g., if all have been excluded.  */
