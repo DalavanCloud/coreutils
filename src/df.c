@@ -654,10 +654,14 @@ get_dev (char const *disk, char const *mount_point,
       negate_available = false;
       available_to_root = available;
 
-      if (known_value (total))
-        grand_fsu.fsu_files += total;
-      if (known_value (available))
-        grand_fsu.fsu_ffree += available;
+      /* Add to grand total unless processing grand total line.  */
+      if (print_grand_total && ! force_fsu)
+        {
+          if (known_value (total))
+            grand_fsu.fsu_files += total;
+          if (known_value (available))
+            grand_fsu.fsu_ffree += available;
+        }
     }
   else
     {
@@ -669,14 +673,19 @@ get_dev (char const *disk, char const *mount_point,
                           && known_value (available));
       available_to_root = fsu.fsu_bfree;
 
-      if (known_value (total))
-        grand_fsu.fsu_blocks += input_units * total;
-      if (known_value (available_to_root))
-        grand_fsu.fsu_bfree  += input_units * available_to_root;
-      if (known_value (available))
-        add_uint_with_neg_flag (&grand_fsu.fsu_bavail,
-                                &grand_fsu.fsu_bavail_top_bit_set,
-                                input_units * available, negate_available);
+      /* Add to grand total unless processing grand total line.  */
+      if (print_grand_total && ! force_fsu)
+        {
+          if (known_value (total))
+            grand_fsu.fsu_blocks += input_units * total;
+          if (known_value (available_to_root))
+            grand_fsu.fsu_bfree  += input_units * available_to_root;
+          if (known_value (available))
+            add_uint_with_neg_flag (&grand_fsu.fsu_bavail,
+                                    &grand_fsu.fsu_bavail_top_bit_set,
+                                    input_units * available,
+                                    negate_available);
+        }
     }
 
   used = UINTMAX_MAX;
