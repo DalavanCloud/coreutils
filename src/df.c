@@ -44,7 +44,7 @@
   proper_name ("Paul Eggert")
 
 /* If true, show even file systems with zero size or
-   uninteresting types. */
+   uninteresting types.  */
 static bool show_all_fs;
 
 /* If true, show only local file systems.  */
@@ -72,7 +72,7 @@ static bool require_sync;
 /* Desired exit status.  */
 static int exit_status;
 
-/* A file system type to display. */
+/* A file system type to display.  */
 
 struct fs_type_list
 {
@@ -98,7 +98,7 @@ static struct fs_type_list *fs_select_list;
 
 static struct fs_type_list *fs_exclude_list;
 
-/* Linked list of mounted file systems. */
+/* Linked list of mounted file systems.  */
 static struct mount_entry *mount_list;
 
 /* If true, print file system type as well.  */
@@ -107,7 +107,7 @@ static bool print_type;
 /* If true, print a grand total at the end.  */
 static bool print_grand_total;
 
-/* Grand total data. */
+/* Grand total data.  */
 static struct fs_usage grand_fsu;
 
 /* Display modes.  */
@@ -620,7 +620,7 @@ df_readable (bool negative, uintmax_t n, char *buf,
 #define LOG_EQ(a, b) (!(a) == !(b))
 
 /* Add integral value while using uintmax_t for value part and separate
-   negation flag. It adds value of SRC and SRC_NEG to DEST and DEST_NEG.
+   negation flag.  It adds value of SRC and SRC_NEG to DEST and DEST_NEG.
    The result will be in DEST and DEST_NEG.  See df_readable to understand
    how the negation flag is used.  */
 static void
@@ -1019,7 +1019,7 @@ get_point (const char *point, const struct stat *statp)
                     exit_status = EXIT_FAILURE;
                   }
 
-                /* So we won't try and fail repeatedly. */
+                /* So we won't try and fail repeatedly.  */
                 me->me_dev = (dev_t) -2;
               }
           }
@@ -1071,7 +1071,7 @@ get_entry (char const *name, struct stat const *statp)
 }
 
 /* Show all mounted file systems, except perhaps those that are of
-   an unselected type or are empty. */
+   an unselected type or are empty.  */
 
 static void
 get_all_entries (void)
@@ -1083,7 +1083,7 @@ get_all_entries (void)
              me->me_dummy, me->me_remote, NULL, true);
 }
 
-/* Add FSTYPE to the list of file system types to display. */
+/* Add FSTYPE to the list of file system types to display.  */
 
 static void
 add_fs_type (const char *fstype)
@@ -1096,7 +1096,7 @@ add_fs_type (const char *fstype)
   fs_select_list = fsp;
 }
 
-/* Add FSTYPE to the list of file system types to be omitted. */
+/* Add FSTYPE to the list of file system types to be omitted.  */
 
 static void
 add_excluded_fs_type (const char *fstype)
@@ -1279,7 +1279,7 @@ main (int argc, char **argv)
           add_fs_type (optarg);
           break;
 
-        case 'v':		/* For SysV compatibility. */
+        case 'v':		/* For SysV compatibility.  */
           /* ignore */
           break;
         case 'x':
@@ -1397,7 +1397,7 @@ main (int argc, char **argv)
       /* Couldn't read the table of mounted file systems.
          Fail if df was invoked with no file name arguments,
          or when either of -a, -l, -t or -x is used with file name
-         arguments. Otherwise, merely give a warning and proceed.  */
+         arguments.  Otherwise, merely give a warning and proceed.  */
       int status = 0;
       if ( ! (optind < argc)
            || (show_all_fs
@@ -1422,7 +1422,7 @@ main (int argc, char **argv)
     {
       int i;
 
-      /* Display explicitly requested empty file systems. */
+      /* Display explicitly requested empty file systems.  */
       show_listed_fs = true;
 
       for (i = optind; i < argc; ++i)
