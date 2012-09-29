@@ -281,16 +281,17 @@ print_table (void)
              functionality is probably more problematic than helpful.  */
           if (col != 0)
             putchar (' ');
+
+          int flags = 0;
           if (col == ncolumns - 1) /* The last one.  */
-            fputs (cell, stdout);
-          else
-            {
-              size_t width = columns[col]->width;
-              cell = ambsalign (cell, &width, columns[col]->align, 0);
-              /* When ambsalign fails, output unaligned data.  */
-              fputs (cell ? cell : table[row][col], stdout);
-              free (cell);
-            }
+            flags = MBA_NO_RIGHT_PAD;
+
+          size_t width = columns[col]->width;
+          cell = ambsalign (cell, &width, columns[col]->align, flags);
+          /* When ambsalign fails, output unaligned data.  */
+          fputs (cell ? cell : table[row][col], stdout);
+          free (cell);
+
           IF_LINT (free (table[row][col]));
         }
       putchar ('\n');
