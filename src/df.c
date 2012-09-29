@@ -43,9 +43,6 @@
   proper_name ("David MacKenzie"), \
   proper_name ("Paul Eggert")
 
-/* If true, show inode information. */
-static bool inode_format;
-
 /* If true, show even file systems with zero size or
    uninteresting types. */
 static bool show_all_fs;
@@ -1086,7 +1083,6 @@ main (int argc, char **argv)
 
   fs_select_list = NULL;
   fs_exclude_list = NULL;
-  inode_format = false;
   show_all_fs = false;
   show_listed_fs = false;
   human_output_opts = -1;
@@ -1119,7 +1115,7 @@ main (int argc, char **argv)
           }
           break;
         case 'i':
-          inode_format = true;
+          header_mode = INODES_MODE;
           break;
         case 'h':
           human_output_opts = human_autoscale | human_SI | human_base_1024;
@@ -1197,8 +1193,8 @@ main (int argc, char **argv)
                        &human_output_opts, &output_block_size);
     }
 
-  if (inode_format)
-    header_mode = INODES_MODE;
+  if (header_mode == INODES_MODE)
+    ;
   else if (human_output_opts & human_autoscale)
     header_mode = HUMAN_MODE;
   else if (posix_format)
