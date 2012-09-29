@@ -117,7 +117,7 @@ enum
   INODES_MODE,
   HUMAN_MODE,
   POSIX_MODE,
-  NMODES
+  OUTPUT_MODE
 };
 static int header_mode = DEFAULT_MODE;
 
@@ -134,8 +134,7 @@ typedef enum
   IUSED_FIELD,  /* inodes used */
   IAVAIL_FIELD, /* inodes available */
   IPCENT_FIELD, /* inodes used in percent */
-  TARGET_FIELD, /* mount point */
-  NFIELDS
+  TARGET_FIELD  /* mount point */
 } display_field_t;
 
 /* Flag if a field contains a block, an inode or another value.  */
@@ -150,47 +149,52 @@ typedef enum
 struct field_data_t
 {
   display_field_t field;
+  char const *arg;
   field_type_t field_type;
   const char *caption;/* NULL means to use the default header of this field.  */
   size_t width;       /* Auto adjusted (up) widths used to align columns.  */
   mbs_align_t align;  /* Alignment for this field.  */
+  bool used;
 };
 
 /* Header strings, minimum width and alignment for the above fields.  */
 static struct field_data_t field_data[] = {
   [SOURCE_FIELD] = { SOURCE_FIELD,
-    OTHER_FLD, N_("Filesystem"), 14, MBS_ALIGN_LEFT },
+    "source", OTHER_FLD, N_("Filesystem"), 14, MBS_ALIGN_LEFT,  false },
 
   [FSTYPE_FIELD] = { FSTYPE_FIELD,
-    OTHER_FLD, N_("Type"),        4, MBS_ALIGN_LEFT },
+    "fstype", OTHER_FLD, N_("Type"),        4, MBS_ALIGN_LEFT,  false },
 
   [TOTAL_FIELD] = { TOTAL_FIELD,
-    BLOCK_FLD, N_("blocks"),      5, MBS_ALIGN_RIGHT },
+    "total",  BLOCK_FLD, N_("blocks"),      5, MBS_ALIGN_RIGHT, false },
 
   [USED_FIELD] = { USED_FIELD,
-    BLOCK_FLD, N_("Used"),        5, MBS_ALIGN_RIGHT },
+    "used",   BLOCK_FLD, N_("Used"),        5, MBS_ALIGN_RIGHT, false },
 
   [AVAIL_FIELD] = { AVAIL_FIELD,
-    BLOCK_FLD, N_("Available"),   5, MBS_ALIGN_RIGHT },
+    "avail",  BLOCK_FLD, N_("Available"),   5, MBS_ALIGN_RIGHT, false },
 
   [PCENT_FIELD] = { PCENT_FIELD,
-    BLOCK_FLD, N_("Use%"),        4, MBS_ALIGN_RIGHT },
+    "pcent",  BLOCK_FLD, N_("Use%"),        4, MBS_ALIGN_RIGHT, false },
 
   [ITOTAL_FIELD] = { ITOTAL_FIELD,
-    INODE_FLD, N_("Inodes"),      5, MBS_ALIGN_RIGHT },
+    "itotal", INODE_FLD, N_("Inodes"),      5, MBS_ALIGN_RIGHT, false },
 
   [IUSED_FIELD] = { IUSED_FIELD,
-    INODE_FLD, N_("IUsed"),       5, MBS_ALIGN_RIGHT },
+    "iused",  INODE_FLD, N_("IUsed"),       5, MBS_ALIGN_RIGHT, false },
 
   [IAVAIL_FIELD] = { IAVAIL_FIELD,
-    INODE_FLD, N_("IFree"),       5, MBS_ALIGN_RIGHT },
+    "iavail", INODE_FLD, N_("IFree"),       5, MBS_ALIGN_RIGHT, false },
 
   [IPCENT_FIELD] = { IPCENT_FIELD,
-    INODE_FLD, N_("IUse%"),       4, MBS_ALIGN_RIGHT },
+    "ipcent", INODE_FLD, N_("IUse%"),       4, MBS_ALIGN_RIGHT, false },
 
   [TARGET_FIELD] = { TARGET_FIELD,
-    OTHER_FLD, N_("Mounted on"),  0, MBS_ALIGN_LEFT }
+    "target", OTHER_FLD, N_("Mounted on"),  0, MBS_ALIGN_LEFT,  false }
 };
+
+static char const *all_args_string = "source,fstype,total,used,avail,pcent,"
+  "itotal,iused,iavail,ipcent,target";
 
 /* Storage for the definition of output columns.  */
 static struct field_data_t **columns;
@@ -224,6 +228,7 @@ enum
   NO_SYNC_OPTION = CHAR_MAX + 1,
   SYNC_OPTION,
   TOTAL_OPTION,
+  OUTPUT_OPTION,
   MEGABYTES_OPTION  /* FIXME: remove long opt in Aug 2013 */
 };
 
@@ -236,6 +241,7 @@ static struct option const long_options[] =
   {"si", no_argument, NULL, 'H'},
   {"local", no_argument, NULL, 'l'},
   {"megabytes", no_argument, NULL, MEGABYTES_OPTION}, /* obsolescent,  */
+  {"output", optional_argument, NULL, OUTPUT_OPTION},
   {"portability", no_argument, NULL, 'P'},
   {"print-type", no_argument, NULL, 'T'},
   {"sync", no_argument, NULL, SYNC_OPTION},
@@ -328,8 +334,86 @@ alloc_field (int f, const char *c)
   columns[ncolumns-1] = &field_data[f];
   if (c != NULL)
     columns[ncolumns-1]->caption = c;
+
+  if (field_data[f].used)
+    assert (!"field used");
+
+  /* Mark field as used.  */
+  field_data[f].used = true;
 }
 
+
+/* Given a string, ARG, containing a comma-separated list of arguments
+   to the --output option, add the appropriate fields to columns.  */
+static void
+decode_output_arg (char const *arg)
+{
+  char *arg_writable = xstrdup (arg);
+  char *s = arg_writable;
+  do
+    {
+      /* find next comma */
+      char *comma = strchr (s, ',');
+
+      /* If we found a comma, put a NUL in its place and advance.  */
+      if (comma)
+        *comma++ = 0;
+
+      /* process S.  */
+      display_field_t field = -1;
+      for (unsigned int i = 0; i < ARRAY_CARDINALITY (field_data); i++)
+        {
+          if (STREQ (field_data[i].arg , s))
+            {
+              field = i;
+              break;
+            }
+        }
+      if (field == -1)
+        {
+          error (0, 0, _("option --output: field '%s' unknown"), s);
+          usage (EXIT_FAILURE);
+        }
+
+      if (field_data[field].used)
+        {
+          /* Prevent the fields from being used more than once.  */
+          error (0, 0, _("option --output: field '%s' used more than once"),
+            field_data[field].arg);
+          usage (EXIT_FAILURE);
+        }
+
+      switch (field)
+        {
+        case SOURCE_FIELD:
+        case FSTYPE_FIELD:
+        case USED_FIELD:
+        case PCENT_FIELD:
+        case ITOTAL_FIELD:
+        case IUSED_FIELD:
+        case IAVAIL_FIELD:
+        case IPCENT_FIELD:
+        case TARGET_FIELD:
+          alloc_field (field, NULL);
+          break;
+
+        case TOTAL_FIELD:
+          alloc_field (field, N_("Size"));
+          break;
+
+        case AVAIL_FIELD:
+          alloc_field (field, N_("Avail"));
+          break;
+
+        default:
+          assert (!"invalid field");
+        }
+      s = comma;
+    }
+  while (s);
+
+  free (arg_writable);
+}
 
 /* Get the appropriate columns for the mode.  */
 static void
@@ -380,6 +464,14 @@ get_field_list (void)
       alloc_field (AVAIL_FIELD,  NULL);
       alloc_field (PCENT_FIELD,  N_("Capacity"));
       alloc_field (TARGET_FIELD, NULL);
+      break;
+
+    case OUTPUT_MODE:
+      if (!ncolumns)
+      {
+        /* Add all fields if --output was given without a field list.  */
+        decode_output_arg (all_args_string);
+      }
       break;
 
     default:
@@ -1093,6 +1185,8 @@ main (int argc, char **argv)
   /* If true, use the POSIX output format.  */
   bool posix_format = false;
 
+  const char *msg_mut_excl = _("options %s and %s are mutually exclusive");
+
   while (true)
     {
       int oi = -1;
@@ -1115,6 +1209,11 @@ main (int argc, char **argv)
           }
           break;
         case 'i':
+          if (header_mode == OUTPUT_MODE)
+            {
+              error (0, 0, msg_mut_excl, "-i", "--output");
+              usage (EXIT_FAILURE);
+            }
           header_mode = INODES_MODE;
           break;
         case 'h':
@@ -1144,9 +1243,19 @@ main (int argc, char **argv)
           output_block_size = 1024 * 1024;
           break;
         case 'T':
+          if (header_mode == OUTPUT_MODE)
+            {
+              error (0, 0, msg_mut_excl, "-T", "--output");
+              usage (EXIT_FAILURE);
+            }
           print_type = true;
           break;
         case 'P':
+          if (header_mode == OUTPUT_MODE)
+            {
+              error (0, 0, msg_mut_excl, "-P", "--output");
+              usage (EXIT_FAILURE);
+            }
           posix_format = true;
           break;
         case SYNC_OPTION:
@@ -1167,6 +1276,27 @@ main (int argc, char **argv)
           break;
         case 'x':
           add_excluded_fs_type (optarg);
+          break;
+
+        case OUTPUT_OPTION:
+          if (header_mode == INODES_MODE)
+            {
+              error (0, 0, msg_mut_excl, "-i", "--output");
+              usage (EXIT_FAILURE);
+            }
+          if (posix_format && header_mode == DEFAULT_MODE)
+            {
+              error (0, 0, msg_mut_excl, "-P", "--output");
+              usage (EXIT_FAILURE);
+            }
+          if (print_type)
+            {
+              error (0, 0, msg_mut_excl, "-T", "--output");
+              usage (EXIT_FAILURE);
+            }
+          header_mode = OUTPUT_MODE;
+          if (optarg)
+            decode_output_arg (optarg);
           break;
 
         case TOTAL_OPTION:
@@ -1193,7 +1323,7 @@ main (int argc, char **argv)
                        &human_output_opts, &output_block_size);
     }
 
-  if (header_mode == INODES_MODE)
+  if (header_mode == INODES_MODE || header_mode == OUTPUT_MODE)
     ;
   else if (human_output_opts & human_autoscale)
     header_mode = HUMAN_MODE;
