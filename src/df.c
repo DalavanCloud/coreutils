@@ -144,10 +144,19 @@ typedef enum
   NFIELDS
 } display_field_t;
 
+/* Flag if a field contains a block, an inode or another value.  */
+typedef enum
+{
+  BLOCK_FLD, /* Block values field */
+  INODE_FLD, /* Inode values field */
+  OTHER_FLD  /* Neutral field, e.g. target */
+} field_type_t;
+
 /* Attributes of a display field.  */
 struct field_data_t
 {
   display_field_t field;
+  field_type_t field_type;
   const char *caption;/* NULL means to use the default header of this field.  */
   size_t width;       /* Auto adjusted (up) widths used to align columns.  */
   mbs_align_t align;  /* Alignment for this field.  */
@@ -156,37 +165,37 @@ struct field_data_t
 /* Header strings, minimum width and alignment for the above fields.  */
 static struct field_data_t field_data[] = {
   [SOURCE_FIELD] = { SOURCE_FIELD,
-    N_("Filesystem"), 14, MBS_ALIGN_LEFT },
+    OTHER_FLD, N_("Filesystem"), 14, MBS_ALIGN_LEFT },
 
   [FSTYPE_FIELD] = { FSTYPE_FIELD,
-    N_("Type"),        4, MBS_ALIGN_LEFT },
+    OTHER_FLD, N_("Type"),        4, MBS_ALIGN_LEFT },
 
   [TOTAL_FIELD] = { TOTAL_FIELD,
-    N_("blocks"),      5, MBS_ALIGN_RIGHT },
+    BLOCK_FLD, N_("blocks"),      5, MBS_ALIGN_RIGHT },
 
   [USED_FIELD] = { USED_FIELD,
-    N_("Used"),        5, MBS_ALIGN_RIGHT },
+    BLOCK_FLD, N_("Used"),        5, MBS_ALIGN_RIGHT },
 
   [AVAIL_FIELD] = { AVAIL_FIELD,
-    N_("Available"),   5, MBS_ALIGN_RIGHT },
+    BLOCK_FLD, N_("Available"),   5, MBS_ALIGN_RIGHT },
 
   [PCENT_FIELD] = { PCENT_FIELD,
-    N_("Use%"),        4, MBS_ALIGN_RIGHT },
+    BLOCK_FLD, N_("Use%"),        4, MBS_ALIGN_RIGHT },
 
   [ITOTAL_FIELD] = { ITOTAL_FIELD,
-    N_("Inodes"),      5, MBS_ALIGN_RIGHT },
+    INODE_FLD, N_("Inodes"),      5, MBS_ALIGN_RIGHT },
 
   [IUSED_FIELD] = { IUSED_FIELD,
-    N_("IUsed"),       5, MBS_ALIGN_RIGHT },
+    INODE_FLD, N_("IUsed"),       5, MBS_ALIGN_RIGHT },
 
   [IAVAIL_FIELD] = { IAVAIL_FIELD,
-    N_("IFree"),       5, MBS_ALIGN_RIGHT },
+    INODE_FLD, N_("IFree"),       5, MBS_ALIGN_RIGHT },
 
   [IPCENT_FIELD] = { IPCENT_FIELD,
-    N_("IUse%"),       4, MBS_ALIGN_RIGHT },
+    INODE_FLD, N_("IUse%"),       4, MBS_ALIGN_RIGHT },
 
   [TARGET_FIELD] = { TARGET_FIELD,
-    N_("Mounted on"),  0, MBS_ALIGN_LEFT }
+    OTHER_FLD, N_("Mounted on"),  0, MBS_ALIGN_LEFT }
 };
 
 /* Storage for the definition of output columns.  */
@@ -194,6 +203,19 @@ static struct field_data_t **columns;
 
 /* The current number of output columns.  */
 static size_t ncolumns;
+
+/* Field values.  */
+struct field_values_t
+{
+  uintmax_t input_units;
+  uintmax_t output_units;
+  uintmax_t total;
+  uintmax_t available;
+  bool negate_available;
+  uintmax_t available_to_root;
+  uintmax_t used;
+  bool negate_used;
+};
 
 /* Storage for pointers for each string (cell of table).  */
 static char ***table;
@@ -553,6 +575,65 @@ has_uuid_suffix (char const *s)
           && strspn (s + len - 36, "-0123456789abcdefABCDEF") == 36);
 }
 
+/* Obtain the block values BV and inode values IV
+   from the file system usage FSU.  */
+static void
+get_field_values (struct field_values_t *bv,
+                  struct field_values_t *iv,
+                  const struct fs_usage *fsu)
+{
+  /* Inode values.  */
+  iv->input_units = iv->output_units = 1;
+  iv->total = fsu->fsu_files;
+  iv->available = iv->available_to_root = fsu->fsu_ffree;
+  iv->negate_available = false;
+
+  iv->used = UINTMAX_MAX;
+  iv->negate_used = false;
+  if (known_value (iv->total) && known_value (iv->available_to_root))
+    {
+      iv->used = iv->total - iv->available_to_root;
+      iv->negate_used = (iv->total < iv->available_to_root);
+    }
+
+  /* Block values.  */
+  bv->input_units = fsu->fsu_blocksize;
+  bv->output_units = output_block_size;
+  bv->total = fsu->fsu_blocks;
+  bv->available = fsu->fsu_bavail;
+  bv->available_to_root = fsu->fsu_bfree;
+  bv->negate_available = (fsu->fsu_bavail_top_bit_set
+                         && known_value (fsu->fsu_bavail));
+
+  bv->used = UINTMAX_MAX;
+  bv->negate_used = false;
+  if (known_value (bv->total) && known_value (bv->available_to_root))
+    {
+      bv->used = bv->total - bv->available_to_root;
+      bv->negate_used = (bv->total < bv->available_to_root);
+    }
+}
+
+/* Add block and inode values to grand total.  */
+static void
+add_to_grand_total (struct field_values_t *bv, struct field_values_t *iv)
+{
+  if (known_value (iv->total))
+    grand_fsu.fsu_files += iv->total;
+  if (known_value (iv->available))
+    grand_fsu.fsu_ffree += iv->available;
+
+  if (known_value (bv->total))
+    grand_fsu.fsu_blocks += bv->input_units * bv->total;
+  if (known_value (bv->available_to_root))
+    grand_fsu.fsu_bfree  += bv->input_units * bv->available_to_root;
+  if (known_value (bv->available))
+    add_uint_with_neg_flag (&grand_fsu.fsu_bavail,
+                            &grand_fsu.fsu_bavail_top_bit_set,
+                            bv->input_units * bv->available,
+                            bv->negate_available);
+}
+
 /* Obtain a space listing for the disk device with absolute file name DISK.
    If MOUNT_POINT is non-NULL, it is the name of the root of the
    file system on DISK.
@@ -575,19 +656,6 @@ get_dev (char const *disk, char const *mount_point,
          const struct fs_usage *force_fsu,
          bool process_all)
 {
-  struct fs_usage fsu;
-  char buf[LONGEST_HUMAN_READABLE + 2];
-  uintmax_t input_units;
-  uintmax_t output_units;
-  uintmax_t total;
-  uintmax_t available;
-  bool negate_available;
-  uintmax_t available_to_root;
-  uintmax_t used;
-  bool negate_used;
-  double pct = -1;
-  char* cell;
-
   if (me_remote && show_local_fs)
     return;
 
@@ -604,6 +672,7 @@ get_dev (char const *disk, char const *mount_point,
   if (!stat_file)
     stat_file = mount_point ? mount_point : disk;
 
+  struct fs_usage fsu;
   if (force_fsu)
     fsu = *force_fsu;
   else if (get_fs_usage (stat_file, disk, &fsu))
@@ -644,59 +713,36 @@ get_dev (char const *disk, char const *mount_point,
   if (! fstype)
     fstype = "-";		/* unknown */
 
-  if (inode_format)
-    {
-      input_units = output_units = 1;
-      total = fsu.fsu_files;
-      available = fsu.fsu_ffree;
-      negate_available = false;
-      available_to_root = available;
+  struct field_values_t block_values;
+  struct field_values_t inode_values;
+  get_field_values (&block_values, &inode_values, &fsu);
 
-      /* Add to grand total unless processing grand total line.  */
-      if (print_grand_total && ! force_fsu)
-        {
-          if (known_value (total))
-            grand_fsu.fsu_files += total;
-          if (known_value (available))
-            grand_fsu.fsu_ffree += available;
-        }
-    }
-  else
-    {
-      input_units = fsu.fsu_blocksize;
-      output_units = output_block_size;
-      total = fsu.fsu_blocks;
-      available = fsu.fsu_bavail;
-      negate_available = (fsu.fsu_bavail_top_bit_set
-                          && known_value (available));
-      available_to_root = fsu.fsu_bfree;
-
-      /* Add to grand total unless processing grand total line.  */
-      if (print_grand_total && ! force_fsu)
-        {
-          if (known_value (total))
-            grand_fsu.fsu_blocks += input_units * total;
-          if (known_value (available_to_root))
-            grand_fsu.fsu_bfree  += input_units * available_to_root;
-          if (known_value (available))
-            add_uint_with_neg_flag (&grand_fsu.fsu_bavail,
-                                    &grand_fsu.fsu_bavail_top_bit_set,
-                                    input_units * available,
-                                    negate_available);
-        }
-    }
-
-  used = UINTMAX_MAX;
-  negate_used = false;
-  if (known_value (total) && known_value (available_to_root))
-    {
-      used = total - available_to_root;
-      negate_used = (total < available_to_root);
-    }
+  /* Add to grand total unless processing grand total line.  */
+  if (print_grand_total && ! force_fsu)
+    add_to_grand_total (&block_values, &inode_values);
 
   size_t col;
   for (col = 0; col < ncolumns; col++)
     {
+      char buf[LONGEST_HUMAN_READABLE + 2];
+      char *cell;
+
+      struct field_values_t *v;
+      switch (columns[col]->field_type)
+        {
+        case BLOCK_FLD:
+          v = &block_values;
+          break;
+        case INODE_FLD:
+          v = &inode_values;
+          break;
+        case OTHER_FLD:
+          v = NULL;
+          break;
+        default:
+          assert (!"bad field_type");
+        }
+
       switch (columns[col]->field)
         {
         case SOURCE_FIELD:
@@ -709,67 +755,74 @@ get_dev (char const *disk, char const *mount_point,
 
         case TOTAL_FIELD:
         case ITOTAL_FIELD:
-          cell = xstrdup (df_readable (false, total, buf,
-                                       input_units, output_units));
+          cell = xstrdup (df_readable (false, v->total, buf,
+                                       v->input_units, v->output_units));
           break;
+
         case USED_FIELD:
         case IUSED_FIELD:
-          cell = xstrdup (df_readable (negate_used, used, buf,
-                                       input_units, output_units));
+          cell = xstrdup (df_readable (v->negate_used, v->used, buf,
+                                       v->input_units, v->output_units));
           break;
+
         case AVAIL_FIELD:
         case IAVAIL_FIELD:
-          cell = xstrdup (df_readable (negate_available, available, buf,
-                                       input_units, output_units));
+          cell = xstrdup (df_readable (v->negate_available, v->available, buf,
+                                       v->input_units, v->output_units));
           break;
 
         case PCENT_FIELD:
         case IPCENT_FIELD:
-          if (! known_value (used) || ! known_value (available))
-            ;
-          else if (!negate_used
-                   && used <= TYPE_MAXIMUM (uintmax_t) / 100
-                   && used + available != 0
-                   && (used + available < used) == negate_available)
-            {
-              uintmax_t u100 = used * 100;
-              uintmax_t nonroot_total = used + available;
-              pct = u100 / nonroot_total + (u100 % nonroot_total != 0);
-            }
-          else
-            {
-              /* The calculation cannot be done easily with integer
-                 arithmetic.  Fall back on floating point.  This can suffer
-                 from minor rounding errors, but doing it exactly requires
-                 multiple precision arithmetic, and it's not worth the
-                 aggravation.  */
-              double u = negate_used ? - (double) - used : used;
-              double a = negate_available ? - (double) - available : available;
-              double nonroot_total = u + a;
-              if (nonroot_total)
-                {
-                  long int lipct = pct = u * 100 / nonroot_total;
-                  double ipct = lipct;
+          {
+            double pct = -1;
+            if (! known_value (v->used) || ! known_value (v->available))
+              ;
+            else if (!v->negate_used
+                     && v->used <= TYPE_MAXIMUM (uintmax_t) / 100
+                     && v->used + v->available != 0
+                     && (v->used + v->available < v->used)
+                         == v->negate_available)
+              {
+                uintmax_t u100 = v->used * 100;
+                uintmax_t nonroot_total = v->used + v->available;
+                pct = u100 / nonroot_total + (u100 % nonroot_total != 0);
+              }
+            else
+              {
+                /* The calculation cannot be done easily with integer
+                   arithmetic.  Fall back on floating point.  This can suffer
+                   from minor rounding errors, but doing it exactly requires
+                   multiple precision arithmetic, and it's not worth the
+                   aggravation.  */
+                double u = v->negate_used ? - (double) - v->used : v->used;
+                double a = v->negate_available
+                           ? - (double) - v->available : v->available;
+                double nonroot_total = u + a;
+                if (nonroot_total)
+                  {
+                    long int lipct = pct = u * 100 / nonroot_total;
+                    double ipct = lipct;
 
-                  /* Like 'pct = ceil (dpct);', but avoid ceil so that
-                     the math library needn't be linked.  */
-                  if (ipct - 1 < pct && pct <= ipct + 1)
-                    pct = ipct + (ipct < pct);
-                }
-            }
+                    /* Like 'pct = ceil (dpct);', but avoid ceil so that
+                       the math library needn't be linked.  */
+                    if (ipct - 1 < pct && pct <= ipct + 1)
+                      pct = ipct + (ipct < pct);
+                  }
+              }
 
-          if (0 <= pct)
-            {
-              if (asprintf (&cell, "%.0f%%", pct) == -1)
-                cell = NULL;
-            }
-          else
-            cell = strdup ("-");
+            if (0 <= pct)
+              {
+                if (asprintf (&cell, "%.0f%%", pct) == -1)
+                  cell = NULL;
+              }
+            else
+              cell = strdup ("-");
 
-          if (!cell)
-            xalloc_die ();
+            if (!cell)
+              xalloc_die ();
 
-          break;
+            break;
+          }
 
         case TARGET_FIELD:
 #ifdef HIDE_AUTOMOUNT_PREFIX
