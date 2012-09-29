@@ -60,9 +60,6 @@ static int human_output_opts;
 /* The units to use when printing sizes.  */
 static uintmax_t output_block_size;
 
-/* If true, use the POSIX output format.  */
-static bool posix_format;
-
 /* True if a file system has been processed for output.  */
 static bool file_systems_processed;
 
@@ -1088,10 +1085,12 @@ main (int argc, char **argv)
   human_output_opts = -1;
   print_type = false;
   file_systems_processed = false;
-  posix_format = false;
   exit_status = EXIT_SUCCESS;
   print_grand_total = false;
   grand_fsu.fsu_blocksize = 1;
+
+  /* If true, use the POSIX output format.  */
+  bool posix_format = false;
 
   while (true)
     {
