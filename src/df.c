@@ -207,6 +207,7 @@ enum
 {
   NO_SYNC_OPTION = CHAR_MAX + 1,
   SYNC_OPTION,
+  TOTAL_OPTION,
   MEGABYTES_OPTION  /* FIXME: remove long opt in Aug 2013 */
 };
 
@@ -223,7 +224,7 @@ static struct option const long_options[] =
   {"print-type", no_argument, NULL, 'T'},
   {"sync", no_argument, NULL, SYNC_OPTION},
   {"no-sync", no_argument, NULL, NO_SYNC_OPTION},
-  {"total", no_argument, NULL, 'c'},
+  {"total", no_argument, NULL, TOTAL_OPTION},
   {"type", required_argument, NULL, 't'},
   {"exclude-type", required_argument, NULL, 'x'},
   {GETOPT_HELP_OPTION_DECL},
@@ -1117,7 +1118,7 @@ main (int argc, char **argv)
           add_excluded_fs_type (optarg);
           break;
 
-        case 'c':
+        case TOTAL_OPTION:
           print_grand_total = true;
           break;
 
