@@ -128,40 +128,72 @@ enum
 static int header_mode = DEFAULT_MODE;
 
 /* Displayable fields.  */
-enum
+typedef enum
 {
   SOURCE_FIELD, /* file system */
   FSTYPE_FIELD, /* FS type */
-  TOTAL_FIELD,  /* blocks or inodes */
-  USED_FIELD,   /* ditto */
-  AVAIL_FIELD,  /* ditto */
+  TOTAL_FIELD,  /* FS size */
+  USED_FIELD,   /* FS size used  */
+  AVAIL_FIELD,  /* FS size available */
   PCENT_FIELD,  /* percent used */
+  ITOTAL_FIELD, /* inode total */
+  IUSED_FIELD,  /* inodes used */
+  IAVAIL_FIELD, /* inodes available */
+  IPCENT_FIELD, /* inodes used in percent */
   TARGET_FIELD, /* mount point */
   NFIELDS
+} display_field_t;
+
+/* Attributes of a display field.  */
+struct field_data_t
+{
+  display_field_t field;
+  const char *caption;/* NULL means to use the default header of this field.  */
+  size_t width;       /* Auto adjusted (up) widths used to align columns.  */
+  mbs_align_t align;  /* Alignment for this field.  */
 };
 
-/* Header strings for the above fields in each mode.
-   NULL means to use the header for the default mode.  */
-static const char *headers[NFIELDS][NMODES] = {
-/*  DEFAULT_MODE	INODES_MODE	HUMAN_MODE	POSIX_MODE  */
-  { N_("Filesystem"),   NULL,           NULL,           NULL },
-  { N_("Type"),         NULL,           NULL,           NULL },
-  { N_("blocks"),       N_("Inodes"),   N_("Size"),     NULL },
-  { N_("Used"),         N_("IUsed"),    NULL,           NULL },
-  { N_("Available"),    N_("IFree"),    N_("Avail"),    NULL },
-  { N_("Use%"),         N_("IUse%"),    NULL,           N_("Capacity") },
-  { N_("Mounted on"),   NULL,           NULL,           NULL }
+/* Header strings, minimum width and alignment for the above fields.  */
+static struct field_data_t field_data[] = {
+  [SOURCE_FIELD] = { SOURCE_FIELD,
+    N_("Filesystem"), 14, MBS_ALIGN_LEFT },
+
+  [FSTYPE_FIELD] = { FSTYPE_FIELD,
+    N_("Type"),        4, MBS_ALIGN_LEFT },
+
+  [TOTAL_FIELD] = { TOTAL_FIELD,
+    N_("blocks"),      5, MBS_ALIGN_RIGHT },
+
+  [USED_FIELD] = { USED_FIELD,
+    N_("Used"),        5, MBS_ALIGN_RIGHT },
+
+  [AVAIL_FIELD] = { AVAIL_FIELD,
+    N_("Available"),   5, MBS_ALIGN_RIGHT },
+
+  [PCENT_FIELD] = { PCENT_FIELD,
+    N_("Use%"),        4, MBS_ALIGN_RIGHT },
+
+  [ITOTAL_FIELD] = { ITOTAL_FIELD,
+    N_("Inodes"),      5, MBS_ALIGN_RIGHT },
+
+  [IUSED_FIELD] = { IUSED_FIELD,
+    N_("IUsed"),       5, MBS_ALIGN_RIGHT },
+
+  [IAVAIL_FIELD] = { IAVAIL_FIELD,
+    N_("IFree"),       5, MBS_ALIGN_RIGHT },
+
+  [IPCENT_FIELD] = { IPCENT_FIELD,
+    N_("IUse%"),       4, MBS_ALIGN_RIGHT },
+
+  [TARGET_FIELD] = { TARGET_FIELD,
+    N_("Mounted on"),  0, MBS_ALIGN_LEFT }
 };
 
-/* Alignments for the 3 textual and 4 numeric fields.  */
-static mbs_align_t alignments[NFIELDS] = {
-  MBS_ALIGN_LEFT, MBS_ALIGN_LEFT,
-  MBS_ALIGN_RIGHT, MBS_ALIGN_RIGHT, MBS_ALIGN_RIGHT, MBS_ALIGN_RIGHT,
-  MBS_ALIGN_LEFT
-};
+/* Storage for the definition of output columns.  */
+static struct field_data_t **columns;
 
-/* Auto adjusted (up) widths used to align columns.  */
-static size_t widths[NFIELDS] = { 14, 4, 5, 5, 5, 4, 0 };
+/* The current number of output columns.  */
+static size_t ncolumns;
 
 /* Storage for pointers for each string (cell of table).  */
 static char ***table;
@@ -224,7 +256,7 @@ alloc_table_row (void)
 {
   nrows++;
   table = xnrealloc (table, nrows, sizeof (char *));
-  table[nrows-1] = xnmalloc (NFIELDS, sizeof (char *));
+  table[nrows-1] = xnmalloc (ncolumns, sizeof (char *));
 }
 
 /* Output each cell in the table, accounting for the
@@ -233,32 +265,33 @@ alloc_table_row (void)
 static void
 print_table (void)
 {
-  size_t field, row;
+  size_t row;
 
   for (row = 0; row < nrows; row ++)
     {
-      for (field = 0; field < NFIELDS; field++)
+      size_t col;
+      for (col = 0; col < ncolumns; col++)
         {
-          size_t width = widths[field];
-          char *cell = table[row][field];
+          char *cell = table[row][col];
           if (!cell) /* Missing type column, or mount point etc. */
             continue;
 
           /* Note the SOURCE_FIELD used to be displayed on it's own line
              if (!posix_format && mbswidth (cell) > 20), but that
              functionality is probably more problematic than helpful.  */
-          if (field != 0)
+          if (col != 0)
             putchar (' ');
-          if (field == TARGET_FIELD) /* The last one.  */
+          if (col == ncolumns - 1) /* The last one.  */
             fputs (cell, stdout);
           else
             {
-              cell = ambsalign (cell, &width, alignments[field], 0);
+              size_t width = columns[col]->width;
+              cell = ambsalign (cell, &width, columns[col]->align, 0);
               /* When ambsalign fails, output unaligned data.  */
-              fputs (cell ? cell : table[row][field], stdout);
+              fputs (cell ? cell : table[row][col], stdout);
               free (cell);
             }
-          IF_LINT (free (table[row][field]));
+          IF_LINT (free (table[row][col]));
         }
       putchar ('\n');
       IF_LINT (free (table[row]));
@@ -267,29 +300,91 @@ print_table (void)
   IF_LINT (free (table));
 }
 
+/* Dynamically allocate a struct field_t in COLUMNS, which
+   can then be accessed with standard array notation.  */
+
+static void
+alloc_field (int f, const char *c)
+{
+  ncolumns++;
+  columns = xnrealloc (columns, ncolumns, sizeof (struct field_data_t *));
+  columns[ncolumns-1] = &field_data[f];
+  if (c != NULL)
+    columns[ncolumns-1]->caption = c;
+}
+
+
+/* Get the appropriate columns for the mode.  */
+static void
+get_field_list (void)
+{
+  switch (header_mode)
+  {
+    case DEFAULT_MODE:
+      alloc_field (SOURCE_FIELD, NULL);
+      if (print_type)
+        alloc_field (FSTYPE_FIELD, NULL);
+      alloc_field (TOTAL_FIELD,  NULL);
+      alloc_field (USED_FIELD,   NULL);
+      alloc_field (AVAIL_FIELD,  NULL);
+      alloc_field (PCENT_FIELD,  NULL);
+      alloc_field (TARGET_FIELD, NULL);
+      break;
+
+    case HUMAN_MODE:
+      alloc_field (SOURCE_FIELD, NULL);
+      if (print_type)
+        alloc_field (FSTYPE_FIELD, NULL);
+
+      alloc_field (TOTAL_FIELD,  N_("Size"));
+      alloc_field (USED_FIELD,   NULL);
+      alloc_field (AVAIL_FIELD,  N_("Avail"));
+      alloc_field (PCENT_FIELD,  NULL);
+      alloc_field (TARGET_FIELD, NULL);
+      break;
+
+    case INODES_MODE:
+      alloc_field (SOURCE_FIELD, NULL);
+      if (print_type)
+        alloc_field (FSTYPE_FIELD, NULL);
+      alloc_field (ITOTAL_FIELD,  NULL);
+      alloc_field (IUSED_FIELD,   NULL);
+      alloc_field (IAVAIL_FIELD,  NULL);
+      alloc_field (IPCENT_FIELD,  NULL);
+      alloc_field (TARGET_FIELD, NULL);
+      break;
+
+    case POSIX_MODE:
+      alloc_field (SOURCE_FIELD, NULL);
+      if (print_type)
+        alloc_field (FSTYPE_FIELD, NULL);
+      alloc_field (TOTAL_FIELD,  NULL);
+      alloc_field (USED_FIELD,   NULL);
+      alloc_field (AVAIL_FIELD,  NULL);
+      alloc_field (PCENT_FIELD,  N_("Capacity"));
+      alloc_field (TARGET_FIELD, NULL);
+      break;
+
+    default:
+      assert (!"invalid header_mode");
+  }
+}
+
 /* Obtain the appropriate header entries.  */
 
 static void
 get_header (void)
 {
-  size_t field;
+  size_t col;
 
   alloc_table_row ();
 
-  for (field = 0; field < NFIELDS; field++)
+  for (col = 0; col < ncolumns; col++)
     {
-      if (field == FSTYPE_FIELD && !print_type)
-        {
-          table[nrows-1][field] = NULL;
-          continue;
-        }
-
       char *cell = NULL;
-      char const *header = _(headers[field][header_mode]);
-      if (!header)
-        header = _(headers[field][DEFAULT_MODE]);
+      char const *header = _(columns[col]->caption);
 
-      if (header_mode == DEFAULT_MODE && field == TOTAL_FIELD)
+      if (header_mode == DEFAULT_MODE && columns[col]->field == TOTAL_FIELD)
         {
           char buf[LONGEST_HUMAN_READABLE + 1];
 
@@ -326,7 +421,7 @@ get_header (void)
           if (asprintf (&cell, _("%s-%s"), num, header) == -1)
             cell = NULL;
         }
-      else if (header_mode == POSIX_MODE && field == TOTAL_FIELD)
+      else if (header_mode == POSIX_MODE && columns[col]->field == TOTAL_FIELD)
         {
           char buf[INT_BUFSIZE_BOUND (uintmax_t)];
           char *num = umaxtostr (output_block_size, buf);
@@ -343,9 +438,9 @@ get_header (void)
 
       hide_problematic_chars (cell);
 
-      table[nrows-1][field] = cell;
+      table[nrows-1][col] = cell;
 
-      widths[field] = MAX (widths[field], mbswidth (cell, 0));
+      columns[col]->width = MAX (columns[col]->width, mbswidth (cell, 0));
     }
 }
 
@@ -492,7 +587,6 @@ get_dev (char const *disk, char const *mount_point,
   bool negate_used;
   double pct = -1;
   char* cell;
-  size_t field;
 
   if (me_remote && show_local_fs)
     return;
@@ -591,9 +685,10 @@ get_dev (char const *disk, char const *mount_point,
       negate_used = (total < available_to_root);
     }
 
-  for (field = 0; field < NFIELDS; field++)
+  size_t col;
+  for (col = 0; col < ncolumns; col++)
     {
-      switch (field)
+      switch (columns[col]->field)
         {
         case SOURCE_FIELD:
           cell = dev_name;
@@ -604,19 +699,23 @@ get_dev (char const *disk, char const *mount_point,
           break;
 
         case TOTAL_FIELD:
+        case ITOTAL_FIELD:
           cell = xstrdup (df_readable (false, total, buf,
                                        input_units, output_units));
           break;
         case USED_FIELD:
+        case IUSED_FIELD:
           cell = xstrdup (df_readable (negate_used, used, buf,
                                        input_units, output_units));
           break;
         case AVAIL_FIELD:
+        case IAVAIL_FIELD:
           cell = xstrdup (df_readable (negate_available, available, buf,
                                        input_units, output_units));
           break;
 
         case PCENT_FIELD:
+        case IPCENT_FIELD:
           if (! known_value (used) || ! known_value (available))
             ;
           else if (!negate_used
@@ -688,9 +787,9 @@ get_dev (char const *disk, char const *mount_point,
       if (cell)
         {
           hide_problematic_chars (cell);
-          widths[field] = MAX (widths[field], mbswidth (cell, 0));
+          columns[col]->width = MAX (columns[col]->width, mbswidth (cell, 0));
         }
-      table[nrows-1][field] = cell;
+      table[nrows-1][col] = cell;
     }
 }
 
@@ -1125,6 +1224,7 @@ main (int argc, char **argv)
   if (require_sync)
     sync ();
 
+  get_field_list ();
   get_header ();
 
   if (optind < argc)
