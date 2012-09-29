@@ -833,7 +833,7 @@ get_dev (char const *disk, char const *mount_point,
       switch (columns[col]->field)
         {
         case SOURCE_FIELD:
-          cell = dev_name;
+          cell = xstrdup (dev_name);
           break;
 
         case FSTYPE_FIELD:
@@ -935,6 +935,7 @@ get_dev (char const *disk, char const *mount_point,
       columns[col]->width = MAX (columns[col]->width, mbswidth (cell, 0));
       table[nrows-1][col] = cell;
     }
+  free (dev_name);
 }
 
 /* If DISK corresponds to a mount point, show its usage
@@ -1438,6 +1439,8 @@ main (int argc, char **argv)
       if (exit_status == EXIT_SUCCESS)
         error (EXIT_FAILURE, 0, _("no file systems processed"));
     }
+
+  IF_LINT ( free (columns));
 
   exit (exit_status);
 }
