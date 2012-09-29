@@ -697,7 +697,7 @@ get_dev (char const *disk, char const *mount_point,
           break;
 
         case FSTYPE_FIELD:
-          cell = print_type ? xstrdup (fstype) : NULL;
+          cell = xstrdup (fstype);
           break;
 
         case TOTAL_FIELD:
