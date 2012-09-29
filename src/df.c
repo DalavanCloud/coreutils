@@ -1298,16 +1298,20 @@ main (int argc, char **argv)
   else
     get_all_entries ();
 
-  if (print_grand_total && file_systems_processed)
-    get_dev ("total", "-", NULL, NULL, false, false, &grand_fsu, false);
-
   if (file_systems_processed)
-    print_table ();
+    {
+      if (print_grand_total)
+        get_dev ("total", "-", NULL, NULL, false, false, &grand_fsu, false);
 
-  /* Print the "no FS processed" diagnostic only if there was no preceding
-     diagnostic, e.g., if all have been excluded.  */
-  if (exit_status == EXIT_SUCCESS && ! file_systems_processed)
-    error (EXIT_FAILURE, 0, _("no file systems processed"));
+      print_table ();
+    }
+  else
+    {
+      /* Print the "no FS processed" diagnostic only if there was no preceding
+         diagnostic, e.g., if all have been excluded.  */
+      if (exit_status == EXIT_SUCCESS)
+        error (EXIT_FAILURE, 0, _("no file systems processed"));
+    }
 
   exit (exit_status);
 }
