@@ -1299,11 +1299,7 @@ main (int argc, char **argv)
     get_all_entries ();
 
   if (print_grand_total && file_systems_processed)
-    {
-      if (inode_format)
-        grand_fsu.fsu_blocks = 1;
-      get_dev ("total", "-", NULL, NULL, false, false, &grand_fsu, false);
-    }
+    get_dev ("total", "-", NULL, NULL, false, false, &grand_fsu, false);
 
   if (file_systems_processed)
     print_table ();
