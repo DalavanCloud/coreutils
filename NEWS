@@ -33,6 +33,11 @@ GNU coreutils NEWS                                    -*- outline -*-
 
   dd now accepts 'status=none' to suppress all informational output.
 
+  df now accepts the --output[=FIELD_LIST] option to define the list of columns
+  to include in the output, or all available columns if the FIELD_LIST is
+  omitted.  This is also the first time for df to be able to print block fields
+  together with inode fields.
+
   md5sum now accepts the --tag option to print BSD-style output with GNU
   file name escaping.  This also affects sha1sum, sha224sum, sha256sum,
   sha384sum and sha512sum.
@@ -80,6 +85,10 @@ GNU coreutils NEWS                                    -*- outline -*-
 ** Changes in behavior
 
   nproc now diagnoses with an error, non option command line parameters.
+
+  df --total now prints '-' into the target column (mount point) of the
+  summary line, accommodating to the --output option where the target
+  field can be in any column.
 
 ** Improvements
 
