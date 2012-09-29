@@ -88,7 +88,8 @@ GNU coreutils NEWS                                    -*- outline -*-
 
   df --total now prints '-' into the target column (mount point) of the
   summary line, accommodating to the --output option where the target
-  field can be in any column.
+  field can be in any column. If there is no source column, then df
+  prints 'total' into the target column.
 
 ** Improvements
 

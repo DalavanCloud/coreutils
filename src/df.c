@@ -1435,7 +1435,9 @@ main (int argc, char **argv)
   if (file_systems_processed)
     {
       if (print_grand_total)
-        get_dev ("total", "-", NULL, NULL, false, false, &grand_fsu, false);
+        get_dev ("total",
+                 (field_data[SOURCE_FIELD].used ? "-" : "total"),
+                 NULL, NULL, false, false, &grand_fsu, false);
 
       print_table ();
     }

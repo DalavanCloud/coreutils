@@ -10637,6 +10637,12 @@ Print a grand total of all arguments after all arguments have
 been processed.  This can be used to find out the total disk size, usage
 and available space of all listed devices.
 
+For the grand total line, @command{df} prints @samp{"total"} into the
+@var{source} column, and @samp{"-"} into the @var{target} column.
+If there is no @var{source} column (see @option{--output}), then
+@command{df} prints @samp{"total"} into the @var{target} column,
+if present.
+
 @optHumanReadable
 
 @item -H
