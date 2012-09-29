@@ -293,7 +293,8 @@ print_table (void)
 
           /* Note the SOURCE_FIELD used to be displayed on it's own line
              if (!posix_format && mbswidth (cell) > 20), but that
-             functionality is probably more problematic than helpful.  */
+             functionality was probably more problematic than helpful,
+             hence changed in commit v8.10-40-g99679ff.  */
           if (col != 0)
             putchar (' ');
 
