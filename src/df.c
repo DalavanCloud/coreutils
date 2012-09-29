@@ -274,8 +274,6 @@ print_table (void)
       for (col = 0; col < ncolumns; col++)
         {
           char *cell = table[row][col];
-          if (!cell) /* Missing type column, or mount point etc. */
-            continue;
 
           /* Note the SOURCE_FIELD used to be displayed on it's own line
              if (!posix_format && mbswidth (cell) > 20), but that
@@ -774,32 +772,27 @@ get_dev (char const *disk, char const *mount_point,
           break;
 
         case TARGET_FIELD:
-          if (mount_point)
-            {
 #ifdef HIDE_AUTOMOUNT_PREFIX
-              /* Don't print the first directory name in MOUNT_POINT if it's an
-                 artifact of an automounter.  This is a bit too aggressive to be
-                 the default.  */
-              if (STRNCMP_LIT (mount_point, "/auto/") == 0)
-                mount_point += 5;
-              else if (STRNCMP_LIT (mount_point, "/tmp_mnt/") == 0)
-                mount_point += 8;
+          /* Don't print the first directory name in MOUNT_POINT if it's an
+             artifact of an automounter.  This is a bit too aggressive to be
+             the default.  */
+          if (STRNCMP_LIT (mount_point, "/auto/") == 0)
+            mount_point += 5;
+          else if (STRNCMP_LIT (mount_point, "/tmp_mnt/") == 0)
+            mount_point += 8;
 #endif
-              cell = xstrdup (mount_point);
-            }
-          else
-            cell = NULL;
+          cell = xstrdup (mount_point);
           break;
 
         default:
           assert (!"unhandled field");
         }
 
-      if (cell)
-        {
-          hide_problematic_chars (cell);
-          columns[col]->width = MAX (columns[col]->width, mbswidth (cell, 0));
-        }
+      if (!cell)
+        assert (!"empty cell");
+
+      hide_problematic_chars (cell);
+      columns[col]->width = MAX (columns[col]->width, mbswidth (cell, 0));
       table[nrows-1][col] = cell;
     }
 }
@@ -1256,7 +1249,7 @@ main (int argc, char **argv)
     {
       if (inode_format)
         grand_fsu.fsu_blocks = 1;
-      get_dev ("total", NULL, NULL, NULL, false, false, &grand_fsu, false);
+      get_dev ("total", "-", NULL, NULL, false, false, &grand_fsu, false);
     }
 
   if (file_systems_processed)
