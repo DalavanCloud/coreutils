@@ -1390,6 +1390,7 @@ main (int argc, char **argv)
     read_file_system_list ((fs_select_list != NULL
                             || fs_exclude_list != NULL
                             || print_type
+                            || field_data[FSTYPE_FIELD].used
                             || show_local_fs));
 
   if (mount_list == NULL)
