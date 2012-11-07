@@ -126,7 +126,7 @@ typedef enum
 {
   SOURCE_FIELD, /* file system */
   FSTYPE_FIELD, /* FS type */
-  TOTAL_FIELD,  /* FS size */
+  SIZE_FIELD,   /* FS size */
   USED_FIELD,   /* FS size used  */
   AVAIL_FIELD,  /* FS size available */
   PCENT_FIELD,  /* percent used */
@@ -165,8 +165,8 @@ static struct field_data_t field_data[] = {
   [FSTYPE_FIELD] = { FSTYPE_FIELD,
     "fstype", OTHER_FLD, N_("Type"),        4, MBS_ALIGN_LEFT,  false },
 
-  [TOTAL_FIELD] = { TOTAL_FIELD,
-    "total",  BLOCK_FLD, N_("blocks"),      5, MBS_ALIGN_RIGHT, false },
+  [SIZE_FIELD] = { SIZE_FIELD,
+    "size",   BLOCK_FLD, N_("blocks"),      5, MBS_ALIGN_RIGHT, false },
 
   [USED_FIELD] = { USED_FIELD,
     "used",   BLOCK_FLD, N_("Used"),        5, MBS_ALIGN_RIGHT, false },
@@ -193,7 +193,7 @@ static struct field_data_t field_data[] = {
     "target", OTHER_FLD, N_("Mounted on"),  0, MBS_ALIGN_LEFT,  false }
 };
 
-static char const *all_args_string = "source,fstype,total,used,avail,pcent,"
+static char const *all_args_string = "source,fstype,size,used,avail,pcent,"
   "itotal,iused,iavail,ipcent,target";
 
 /* Storage for the definition of output columns.  */
@@ -397,7 +397,7 @@ decode_output_arg (char const *arg)
           alloc_field (field, NULL);
           break;
 
-        case TOTAL_FIELD:
+        case SIZE_FIELD:
           alloc_field (field, N_("Size"));
           break;
 
@@ -425,7 +425,7 @@ get_field_list (void)
       alloc_field (SOURCE_FIELD, NULL);
       if (print_type)
         alloc_field (FSTYPE_FIELD, NULL);
-      alloc_field (TOTAL_FIELD,  NULL);
+      alloc_field (SIZE_FIELD,  NULL);
       alloc_field (USED_FIELD,   NULL);
       alloc_field (AVAIL_FIELD,  NULL);
       alloc_field (PCENT_FIELD,  NULL);
@@ -437,7 +437,7 @@ get_field_list (void)
       if (print_type)
         alloc_field (FSTYPE_FIELD, NULL);
 
-      alloc_field (TOTAL_FIELD,  N_("Size"));
+      alloc_field (SIZE_FIELD,  N_("Size"));
       alloc_field (USED_FIELD,   NULL);
       alloc_field (AVAIL_FIELD,  N_("Avail"));
       alloc_field (PCENT_FIELD,  NULL);
@@ -459,7 +459,7 @@ get_field_list (void)
       alloc_field (SOURCE_FIELD, NULL);
       if (print_type)
         alloc_field (FSTYPE_FIELD, NULL);
-      alloc_field (TOTAL_FIELD,  NULL);
+      alloc_field (SIZE_FIELD,  NULL);
       alloc_field (USED_FIELD,   NULL);
       alloc_field (AVAIL_FIELD,  NULL);
       alloc_field (PCENT_FIELD,  N_("Capacity"));
@@ -493,7 +493,7 @@ get_header (void)
       char *cell = NULL;
       char const *header = _(columns[col]->caption);
 
-      if (header_mode == DEFAULT_MODE && columns[col]->field == TOTAL_FIELD)
+      if (header_mode == DEFAULT_MODE && columns[col]->field == SIZE_FIELD)
         {
           char buf[LONGEST_HUMAN_READABLE + 1];
 
@@ -530,7 +530,7 @@ get_header (void)
           if (asprintf (&cell, _("%s-%s"), num, header) == -1)
             cell = NULL;
         }
-      else if (header_mode == POSIX_MODE && columns[col]->field == TOTAL_FIELD)
+      else if (header_mode == POSIX_MODE && columns[col]->field == SIZE_FIELD)
         {
           char buf[INT_BUFSIZE_BOUND (uintmax_t)];
           char *num = umaxtostr (output_block_size, buf);
@@ -840,7 +840,7 @@ get_dev (char const *disk, char const *mount_point,
           cell = xstrdup (fstype);
           break;
 
-        case TOTAL_FIELD:
+        case SIZE_FIELD:
         case ITOTAL_FIELD:
           cell = xstrdup (df_readable (false, v->total, buf,
                                        v->input_units, v->output_units));
@@ -1158,7 +1158,7 @@ Mandatory arguments to long options are mandatory for short options too.\n\
       emit_size_note ();
   fputs (_("\n\
 FIELD_LIST is a comma-separated list of columns to be included.  Valid\n\
-field names are: 'source', 'fstype', 'total', 'used', 'avail', 'pcent',\n\
+field names are: 'source', 'fstype', 'size', 'used', 'avail', 'pcent',\n\
 'itotal', 'iused', 'iavail', 'ipcent' and 'target' (see info page).\n\
 "), stdout);
       emit_ancillary_info ();

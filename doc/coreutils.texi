@@ -10702,14 +10702,14 @@ The source of the mount point, usually a device.
 @item fstype
 File system type.
 
-@item total
+@item size
 Total number of blocks.
 @item used
 Number of used blocks.
 @item avail
 Number of available blocks.
 @item pcent
-Percentage of @var{used} divided by @var{total}.
+Percentage of @var{used} divided by @var{size}.
 
 @item itotal
 Total number of inodes.

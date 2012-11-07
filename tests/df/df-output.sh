@@ -70,7 +70,7 @@ cat <<\EOF > exp || framework_failure_
 Filesystem Type Size Used Avail Use% Inodes IUsed IFree IUse% Mounted on
 EOF
 
-df --o=source,fstype,total,used,avail,pcent \
+df --o=source,fstype,size,used,avail,pcent \
  --o=itotal,iused,iavail,ipcent,target '.' >out || fail=1
 sed -e '1 {s/ [ ]*/ /g;q}' out > out2
 compare exp out2 || fail=1
