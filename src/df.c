@@ -493,7 +493,10 @@ get_header (void)
       char *cell = NULL;
       char const *header = _(columns[col]->caption);
 
-      if (header_mode == DEFAULT_MODE && columns[col]->field == SIZE_FIELD)
+      if (columns[col]->field == SIZE_FIELD
+          && (header_mode == DEFAULT_MODE
+              || (header_mode == OUTPUT_MODE
+                  && !(human_output_opts & human_autoscale))))
         {
           char buf[LONGEST_HUMAN_READABLE + 1];
 
@@ -525,6 +528,9 @@ get_header (void)
             opts |= human_B;
 
           char *num = human_readable (output_block_size, buf, opts, 1, 1);
+
+          /* Reset the header back to the default in OUTPUT_MODE.  */
+          header = N_("blocks");
 
           /* TRANSLATORS: this is the "1K-blocks" header in "df" output.  */
           if (asprintf (&cell, _("%s-%s"), num, header) == -1)
