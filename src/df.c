@@ -279,7 +279,7 @@ alloc_table_row (void)
 {
   nrows++;
   table = xnrealloc (table, nrows, sizeof (char *));
-  table[nrows-1] = xnmalloc (ncolumns, sizeof (char *));
+  table[nrows - 1] = xnmalloc (ncolumns, sizeof (char *));
 }
 
 /* Output each cell in the table, accounting for the
@@ -290,7 +290,7 @@ print_table (void)
 {
   size_t row;
 
-  for (row = 0; row < nrows; row ++)
+  for (row = 0; row < nrows; row++)
     {
       size_t col;
       for (col = 0; col < ncolumns; col++)
@@ -331,9 +331,9 @@ alloc_field (int f, const char *c)
 {
   ncolumns++;
   columns = xnrealloc (columns, ncolumns, sizeof (struct field_data_t *));
-  columns[ncolumns-1] = &field_data[f];
+  columns[ncolumns - 1] = &field_data[f];
   if (c != NULL)
-    columns[ncolumns-1]->caption = c;
+    columns[ncolumns - 1]->caption = c;
 
   if (field_data[f].used)
     assert (!"field used");
@@ -363,7 +363,7 @@ decode_output_arg (char const *arg)
       display_field_t field = -1;
       for (unsigned int i = 0; i < ARRAY_CARDINALITY (field_data); i++)
         {
-          if (STREQ (field_data[i].arg , s))
+          if (STREQ (field_data[i].arg, s))
             {
               field = i;
               break;
@@ -379,7 +379,7 @@ decode_output_arg (char const *arg)
         {
           /* Prevent the fields from being used more than once.  */
           error (0, 0, _("option --output: field '%s' used more than once"),
-            field_data[field].arg);
+                 field_data[field].arg);
           usage (EXIT_FAILURE);
         }
 
@@ -420,7 +420,7 @@ static void
 get_field_list (void)
 {
   switch (header_mode)
-  {
+    {
     case DEFAULT_MODE:
       alloc_field (SOURCE_FIELD, NULL);
       if (print_type)
@@ -468,15 +468,15 @@ get_field_list (void)
 
     case OUTPUT_MODE:
       if (!ncolumns)
-      {
-        /* Add all fields if --output was given without a field list.  */
-        decode_output_arg (all_args_string);
-      }
+        {
+          /* Add all fields if --output was given without a field list.  */
+          decode_output_arg (all_args_string);
+        }
       break;
 
     default:
       assert (!"invalid header_mode");
-  }
+    }
 }
 
 /* Obtain the appropriate header entries.  */
@@ -553,7 +553,7 @@ get_header (void)
 
       hide_problematic_chars (cell);
 
-      table[nrows-1][col] = cell;
+      table[nrows - 1][col] = cell;
 
       columns[col]->width = MAX (columns[col]->width, mbswidth (cell, 0));
     }
@@ -719,7 +719,7 @@ add_to_grand_total (struct field_values_t *bv, struct field_values_t *iv)
   if (known_value (bv->total))
     grand_fsu.fsu_blocks += bv->input_units * bv->total;
   if (known_value (bv->available_to_root))
-    grand_fsu.fsu_bfree  += bv->input_units * bv->available_to_root;
+    grand_fsu.fsu_bfree += bv->input_units * bv->available_to_root;
   if (known_value (bv->available))
     add_uint_with_neg_flag (&grand_fsu.fsu_bavail,
                             &grand_fsu.fsu_bavail_top_bit_set,
@@ -874,7 +874,7 @@ get_dev (char const *disk, char const *mount_point,
                      && v->used <= TYPE_MAXIMUM (uintmax_t) / 100
                      && v->used + v->available != 0
                      && (v->used + v->available < v->used)
-                         == v->negate_available)
+                     == v->negate_available)
               {
                 uintmax_t u100 = v->used * 100;
                 uintmax_t nonroot_total = v->used + v->available;
@@ -939,7 +939,7 @@ get_dev (char const *disk, char const *mount_point,
 
       hide_problematic_chars (cell);
       columns[col]->width = MAX (columns[col]->width, mbswidth (cell, 0));
-      table[nrows-1][col] = cell;
+      table[nrows - 1][col] = cell;
     }
   free (dev_name);
 }
@@ -1162,7 +1162,7 @@ Mandatory arguments to long options are mandatory for short options too.\n\
       fputs (VERSION_OPTION_DESCRIPTION, stdout);
       emit_blocksize_note ("DF");
       emit_size_note ();
-  fputs (_("\n\
+      fputs (_("\n\
 FIELD_LIST is a comma-separated list of columns to be included.  Valid\n\
 field names are: 'source', 'fstype', 'size', 'used', 'avail', 'pcent',\n\
 'itotal', 'iused', 'iavail', 'ipcent' and 'target' (see info page).\n\
@@ -1456,7 +1456,7 @@ main (int argc, char **argv)
         error (EXIT_FAILURE, 0, _("no file systems processed"));
     }
 
-  IF_LINT ( free (columns));
+  IF_LINT (free (columns));
 
   exit (exit_status);
 }
