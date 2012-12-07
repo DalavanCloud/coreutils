@@ -57,7 +57,7 @@ scale_IEC
 
 static char const *const scale_from_args[] =
 {
-"none", "auto", "SI", "IEC", NULL
+"none", "auto", "si", "iec", NULL
 };
 static enum scale_type const scale_from_types[] =
 {
@@ -66,7 +66,7 @@ scale_none, scale_auto, scale_SI, scale_IEC
 
 static char const *const scale_to_args[] =
 {
-"none", "SI", "IEC", NULL
+"none", "si", "iec", NULL
 };
 static enum scale_type const scale_to_types[] =
 {
