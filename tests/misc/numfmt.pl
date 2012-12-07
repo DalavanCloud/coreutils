@@ -170,6 +170,13 @@ my @Tests =
      ['field-6', '--delimiter=: --field 2 --from=auto "Hello:40M:World:90G"',
              {OUT=>"Hello:40000000:World:90G"}],
 
+     # not enough fields - silently ignored
+     ['field-7', '--field 3 --to=si "Hello World"', {OUT=>"Hello World"}],
+     ['field-8', '--field 3 --debug --to=si "Hello World"',
+	     {OUT=>"Hello World"},
+             {ERR=>"$prog: Input line is too short, no numbers found " .
+	           "to convert in field 3\n"}],
+
 
      # Corner-cases:
      # weird mix of identical suffix,delimiters

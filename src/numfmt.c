@@ -624,10 +624,10 @@ process_line (char* line)
   char *pre,*num,*suf;
   extract_fields (line,field,&pre,&num,&suf);
   if (pre)
-    {
       fputs (pre,stdout);
+
+  if (pre && num)
       fputc ((delimiter==DELIMITER_DEFAULT)?' ':delimiter, stdout);
-    }
 
   if (num)
     process_suffixed_number (num);
