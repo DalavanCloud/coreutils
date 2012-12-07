@@ -18,6 +18,8 @@
 #include <getopt.h>
 #include <stdio.h>
 #include <sys/types.h>
+#include <langinfo.h>
+#include <locale.h>
 
 #include "mbsalign.h"
 #include "argmatch.h"
@@ -44,7 +46,8 @@ enum
   GROUPING_OPTION,
   PADDING_OPTION,
   FIELD_OPTION,
-  DEBUG_OPTION
+  DEBUG_OPTION,
+  DEV_DEBUG_OPTION
 };
 
 enum scale_type
@@ -104,6 +107,7 @@ static struct option const longopts[] =
   {"delimiter", required_argument, NULL, 'd'},
   {"field", required_argument, NULL, FIELD_OPTION},
   {"debug", no_argument,NULL,DEBUG_OPTION},
+  {"devdebug", no_argument,NULL,DEV_DEBUG_OPTION},
   {GETOPT_HELP_OPTION_DECL},
   {GETOPT_VERSION_OPTION_DECL},
   {NULL, 0, NULL, 0}
@@ -124,9 +128,14 @@ static char *padding_buffer=NULL;
 static long int padding_width=0;
 static mbs_align_t padding_alignment=MBS_ALIGN_RIGHT;
 static long int field=1;
-static int debug=0;
 static int delimiter = DELIMITER_DEFAULT;
 
+/* Debug for users: print warnings to STDERR about possible
+   error (similar to sort's debug) */
+static int debug=0;
+
+/* debugging for developers - to be removed in final version? */
+static int dev_debug=0;
 
 /*
    Converts a string to a long-long-int, optionally handling suffixes.
@@ -350,6 +359,7 @@ Numbers can be processed either from stdin or command arguments.\n\
                   in C/POSIX locales).\n\
   --field N       replace the number in input field N (default is 1)\n\
   -d, --delimiter=X  use X instead of whitespace for field delimiter\n\
+  --debug         Print warning about possible errors.\n\
   \n\
 "), stdout);
       fputs (HELP_OPTION_DESCRIPTION, stdout);
@@ -423,7 +433,7 @@ parse_number (const char* str)
   if (err != LONGINT_OK)
     human_xstrtol_fatal (err, str);
 
-  if (debug)
+  if (dev_debug)
     fprintf (stderr,"Parsing number:\n  input string: '%s'\n  " \
             "remaining characters: '%s'\n  numeric value: %zu\n",
             str,ptr,val);
@@ -460,7 +470,7 @@ print_number (const __strtol_t val)
   char *s = human_readable (val, buf, human_print_options,
                            from_unit_size,to_unit_size);
 
-  if (debug)
+  if (dev_debug)
     fprintf (stderr,"Formatting output:\n  value: %zu\n  humanized: '%s'\n",
             val,s);
 
@@ -473,7 +483,7 @@ print_number (const __strtol_t val)
         error (0,0,_("value '%s' truncated due to padding, possible data loss"),
               s);
 
-      if (debug)
+      if (dev_debug)
         fprintf (stderr,"  After padding: '%s'\n", padding_buffer);
 
       fputs (padding_buffer,stdout);
@@ -499,12 +509,12 @@ process_suffixed_number (char* text)
         {
           /* trim suffix, ONLY if it's at the end of the text */
           *possible_suffix='\0';
-          if (debug)
+          if (dev_debug)
             fprintf (stderr,"Trimming suffix '%s'\n", suffix);
         }
       else
         {
-          if (debug)
+          if (dev_debug)
             fprintf (stderr,"No valid suffix found\n");
         }
     }
@@ -565,7 +575,7 @@ extract_fields (char* line, int _field,
   *_data = NULL ;
   *_suffix = NULL ;
 
-  if (debug)
+  if (dev_debug)
     fprintf (stderr,"Extracting Fields:\n  input: '%s'\n  field: %d\n",
         line, _field);
 
@@ -577,7 +587,7 @@ extract_fields (char* line, int _field,
       if (*ptr=='\0')
         {
           /* not enough fields in the input - print warning? */
-          if (debug)
+          if (dev_debug)
             fprintf (stderr,"  TOO FEW FIELDS!\n  prefix: '%s'\n",
                 *_prefix);
           return ;
@@ -599,7 +609,7 @@ extract_fields (char* line, int _field,
   else
     *_suffix=NULL;
 
-  if (debug)
+  if (dev_debug)
     fprintf (stderr,"  prefix: '%s'\n  number: '%s'\n  suffix: '%s'\n",
         *_prefix,*_data,*_suffix);
 }
@@ -710,6 +720,10 @@ main (int argc, char **argv)
           debug=1;
           break;
 
+        case DEV_DEBUG_OPTION:
+          dev_debug=1;
+          break;
+
         case_GETOPT_HELP_CHAR;
         case_GETOPT_VERSION_CHAR (PROGRAM_NAME, AUTHORS);
 
@@ -752,7 +766,14 @@ main (int argc, char **argv)
       if (scale_to!=scale_none)
         error (EXIT_FAILURE,0,_("--grouping cannot be combined with --to"));
       human_print_options |= human_group_digits;
+      if (debug && (strlen(nl_langinfo(THOUSEP))==0))
+            error(0,0,_("--grouping has not effect in this locale"));
     }
+
+  /* Warn about no-op */
+  if (debug && scale_from==scale_none && scale_to==scale_none &&
+      !grouping && (padding_width==0))
+      error(0,0,_("No conversion option specified"));
 
   if (argc > optind)
     {
