@@ -629,7 +629,11 @@ process_line (char* line)
       fputc ((delimiter==DELIMITER_DEFAULT)?' ':delimiter, stdout);
     }
 
-  process_suffixed_number (num);
+  if (num)
+    process_suffixed_number (num);
+  if (!num && debug)
+    error(0,0,_("Input line is too short, " \
+               "no numbers found to convert in field %ld"), field);
 
   if (suf)
     {
