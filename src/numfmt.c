@@ -47,7 +47,8 @@ enum
   PADDING_OPTION,
   FIELD_OPTION,
   DEBUG_OPTION,
-  DEV_DEBUG_OPTION
+  DEV_DEBUG_OPTION,
+  HEADER_OPTION
 };
 
 enum scale_type
@@ -108,6 +109,7 @@ static struct option const longopts[] =
   {"field", required_argument, NULL, FIELD_OPTION},
   {"debug", no_argument,NULL,DEBUG_OPTION},
   {"devdebug", no_argument,NULL,DEV_DEBUG_OPTION},
+  {"header", optional_argument,NULL,HEADER_OPTION},
   {GETOPT_HELP_OPTION_DECL},
   {GETOPT_VERSION_OPTION_DECL},
   {NULL, 0, NULL, 0}
@@ -129,6 +131,9 @@ static long int padding_width=0;
 static mbs_align_t padding_alignment=MBS_ALIGN_RIGHT;
 static long int field=1;
 static int delimiter = DELIMITER_DEFAULT;
+
+/* if non-zero, the first 'header' lines from STDIN are skipped */
+static uintmax_t header=0;
 
 /* Debug for users: print warnings to STDERR about possible
    error (similar to sort's debug) */
@@ -728,6 +733,19 @@ main (int argc, char **argv)
           dev_debug=1;
           break;
 
+        case HEADER_OPTION:
+          if (optarg)
+            {
+              if (xstrtoumax (optarg,NULL,10,&header,"")!=LONGINT_OK
+                  || header==0)
+                error (EXIT_FAILURE,0,_("invalid header value '%s'"), optarg);
+            }
+          else
+            {
+              header=1;
+            }
+          break;
+
         case_GETOPT_HELP_CHAR;
         case_GETOPT_VERSION_CHAR (PROGRAM_NAME, AUTHORS);
 
@@ -781,12 +799,21 @@ main (int argc, char **argv)
 
   if (argc > optind)
     {
-    for (; optind < argc; optind++)
-      process_line (argv[optind]);
+      if (debug && header)
+        error(0,0,_("--header ignored with command-line input"));
+
+      for (; optind < argc; optind++)
+        process_line (argv[optind]);
     }
   else
     {
       char buf[BUFFER_SIZE + 1];
+
+      /* FIXME: check if the line is too long,
+                'buf' doesn't contain a CRLF, and so this isn't
+                the entire line */
+      while ( header-- && fgets (buf,BUFFER_SIZE,stdin) != NULL )
+          fputs(buf,stdout);
 
       while ( fgets (buf,BUFFER_SIZE,stdin) != NULL )
         {

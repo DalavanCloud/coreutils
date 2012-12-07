@@ -219,6 +219,33 @@ my @Tests =
      ['mix-14', '--delimiter=M --field 2 --from=auto --to=si 4000M5000M9000',
              {OUT=>"4000M5.0kM9000"}],
 
+
+
+     ## Header testing
+
+     # header - silently ignored with command line parameters
+     ['header-1', '--header --to=iec 4000', {OUT=>"4.0K"}],
+
+     # header warning with --debug
+     ['header-2', '--debug --header --to=iec 4000', {OUT=>"4.0K"},
+	     {ERR=>"$prog: --header ignored with command-line input\n"}],
+
+     ['header-3', '--header=A',
+             {ERR=>"$prog: invalid header value 'A'\n"},
+             {EXIT => 1},],
+     ['header-4', '--header=0',
+             {ERR=>"$prog: invalid header value '0'\n"},
+             {EXIT => 1},],
+     ['header-5', '--header=-6',
+             {ERR=>"$prog: invalid header value '-6'\n"},
+             {EXIT => 1},],
+     ['header-6', '--debug --header --to=iec',
+	     {IN_PIPE=>"size\n5000\n90000\n"},
+	     {OUT=>"size\n4.9K\n88K"}],
+     ['header-7', '--debug --header=3 --to=iec',
+	     {IN_PIPE=>"hello\nworld\nsize\n5000\n90000\n"},
+	     {OUT=>"hello\n\world\nsize\n4.9K\n88K"}],
+
     );
 
 # Prepend the command line argument and append a newline to end
