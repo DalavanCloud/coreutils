@@ -25,6 +25,10 @@ my $prog = 'numfmt';
 # Turn off localization of executable's output.
 @ENV{qw(LANGUAGE LANG LC_ALL)} = ('C') x 3;
 
+my $locale = $ENV{LOCALE_FR_UTF8};
+! defined $locale || $locale eq 'none'
+  and $locale = 'C';
+
 my @Tests =
     (
      ['1', '1234',             {OUT => "1234"}],
@@ -109,14 +113,11 @@ my @Tests =
 
      ## GROUPING
 
-     # "C" locale - no grouping.
+     # "C" locale - no grouping (locale-specific tests, below)
      ['grp-1', '--from=si --grouping 7M',   {OUT=>'7000000'}],
      ['grp-2', '--from=si --to=si --grouping 7M',
               {ERR => "$prog: --grouping cannot be combined with --to\n"},
               {EXIT => '1'}],
-
-     ## TODO: check under a different locale (one that supports grouping)?
-     #['grp-3', '--from=si --grouping 7M',   {OUT=>'7,000,000'}],
 
 
      ## Padding
@@ -173,9 +174,9 @@ my @Tests =
      # not enough fields - silently ignored
      ['field-7', '--field 3 --to=si "Hello World"', {OUT=>"Hello World"}],
      ['field-8', '--field 3 --debug --to=si "Hello World"',
-	     {OUT=>"Hello World"},
+             {OUT=>"Hello World"},
              {ERR=>"$prog: Input line is too short, no numbers found " .
-	           "to convert in field 3\n"}],
+                   "to convert in field 3\n"}],
 
 
      # Corner-cases:
@@ -228,7 +229,7 @@ my @Tests =
 
      # header warning with --debug
      ['header-2', '--debug --header --to=iec 4000', {OUT=>"4.0K"},
-	     {ERR=>"$prog: --header ignored with command-line input\n"}],
+             {ERR=>"$prog: --header ignored with command-line input\n"}],
 
      ['header-3', '--header=A',
              {ERR=>"$prog: invalid header value 'A'\n"},
@@ -240,13 +241,26 @@ my @Tests =
              {ERR=>"$prog: invalid header value '-6'\n"},
              {EXIT => 1},],
      ['header-6', '--debug --header --to=iec',
-	     {IN_PIPE=>"size\n5000\n90000\n"},
-	     {OUT=>"size\n4.9K\n88K"}],
+             {IN_PIPE=>"size\n5000\n90000\n"},
+             {OUT=>"size\n4.9K\n88K"}],
      ['header-7', '--debug --header=3 --to=iec',
-	     {IN_PIPE=>"hello\nworld\nsize\n5000\n90000\n"},
-	     {OUT=>"hello\n\world\nsize\n4.9K\n88K"}],
+             {IN_PIPE=>"hello\nworld\nsize\n5000\n90000\n"},
+             {OUT=>"hello\nworld\nsize\n4.9K\n88K"}],
+
 
     );
+
+my @Locale_Tests =
+  (
+     # Locale that supports grouping, but without '--grouping' parameter
+     ['lcl-grp-1', '--from=si 7M',   {OUT=>"7000000"},
+             {ENV=>"LC_ALL=$locale"}],
+
+     # Locale with grouping
+     ['lcl-grp-2', '--from=si --grouping 7M',   {OUT=>"7 000 000"},
+             {ENV=>"LC_ALL=$locale"}],
+  );
+push @Tests, @Locale_Tests if $locale ne "C";
 
 # Prepend the command line argument and append a newline to end
 # of each expected 'OUT' string.

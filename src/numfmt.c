@@ -19,7 +19,6 @@
 #include <stdio.h>
 #include <sys/types.h>
 #include <langinfo.h>
-#include <locale.h>
 
 #include "mbsalign.h"
 #include "argmatch.h"
@@ -364,7 +363,7 @@ Numbers can be processed either from stdin or command arguments.\n\
                   in C/POSIX locales).\n\
   --field N       replace the number in input field N (default is 1)\n\
   -d, --delimiter=X  use X instead of whitespace for field delimiter\n\
-  --debug         Print warning about possible errors.\n\
+  --debug         print warning about possible errors.\n\
   \n\
 "), stdout);
       fputs (HELP_OPTION_DESCRIPTION, stdout);
@@ -637,8 +636,8 @@ process_line (char* line)
   if (num)
     process_suffixed_number (num);
   if (!num && debug)
-    error(0,0,_("Input line is too short, " \
-               "no numbers found to convert in field %ld"), field);
+    error (0,0,_("input line is too short, " \
+                 "no numbers found to convert in field %ld"), field);
 
   if (suf)
     {
@@ -788,19 +787,19 @@ main (int argc, char **argv)
       if (scale_to!=scale_none)
         error (EXIT_FAILURE,0,_("--grouping cannot be combined with --to"));
       human_print_options |= human_group_digits;
-      if (debug && (strlen(nl_langinfo(THOUSEP))==0))
-            error(0,0,_("--grouping has not effect in this locale"));
+      if (debug && (strlen (nl_langinfo (THOUSEP))==0))
+            error (0,0,_("--grouping has not effect in this locale"));
     }
 
   /* Warn about no-op */
-  if (debug && scale_from==scale_none && scale_to==scale_none &&
-      !grouping && (padding_width==0))
-      error(0,0,_("No conversion option specified"));
+  if (debug && scale_from==scale_none && scale_to==scale_none
+      && !grouping && (padding_width==0))
+      error (0,0,_("no conversion option specified"));
 
   if (argc > optind)
     {
       if (debug && header)
-        error(0,0,_("--header ignored with command-line input"));
+        error (0,0,_("--header ignored with command-line input"));
 
       for (; optind < argc; optind++)
         process_line (argv[optind]);
@@ -813,7 +812,7 @@ main (int argc, char **argv)
                 'buf' doesn't contain a CRLF, and so this isn't
                 the entire line */
       while ( header-- && fgets (buf,BUFFER_SIZE,stdin) != NULL )
-          fputs(buf,stdout);
+          fputs (buf,stdout);
 
       while ( fgets (buf,BUFFER_SIZE,stdin) != NULL )
         {
