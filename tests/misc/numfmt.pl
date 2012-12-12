@@ -71,15 +71,15 @@ my @Tests =
      # Test Suffix logic
      ['suf-1', '4000',    {OUT=>'4000'}],
      ['suf-2', '4Q',
-             {ERR => "$prog: invalid suffix in input '4Q': 'Q'\n"},
+             {ERR => "$prog: invalid suffix in input: '4Q'\n"},
              {EXIT => '1'}],
      ['suf-2.1', '4M',
-             {ERR => "$prog: not accepting suffix 'M' " .
-             "in input '4M' (consider using --from)\n"},
+             {ERR => "$prog: rejecting suffix " .
+             "in input: '4M' (consider using --from)\n"},
              {EXIT => '1'}],
      ['suf-3', '--from=si 4M',  {OUT=>'4000000'}],
      ['suf-4', '--from=si 4Q',
-             {ERR => "$prog: invalid suffix in input '4Q': 'Q'\n"},
+             {ERR => "$prog: invalid suffix in input: '4Q'\n"},
              {EXIT => '1'}],
      ['suf-5', '--from=si 4MQ',
              {ERR => "$prog: invalid suffix in input '4MQ': 'Q'\n"},
@@ -92,7 +92,7 @@ my @Tests =
              {ERR => "$prog: invalid suffix in input '4MiQ': 'Q'\n"},
              {EXIT => '1'}],
      ['suf-10', '--from=auto 4QiQ',
-             {ERR => "$prog: invalid suffix in input '4QiQ': 'QiQ'\n"},
+             {ERR => "$prog: invalid suffix in input: '4QiQ'\n"},
              {EXIT => '1'}],
 
      # characters after a white space are OK - printed as-is
@@ -105,10 +105,10 @@ my @Tests =
      ['suf-15', '--suffix=Foo --from=si 70KFoo',    {OUT=>'70000Foo'}],
      ['suf-16', '--suffix=Foo --to=si   7000Foo',    {OUT=>'7.0kFoo'}],
      ['suf-17', '--suffix=Foo --to=si   7000Bar',
-              {ERR => "$prog: invalid suffix in input '7000Bar': 'Bar'\n"},
+              {ERR => "$prog: invalid suffix in input: '7000Bar'\n"},
               {EXIT => '1'}],
      ['suf-18', '--suffix=Foo --to=si   7000FooF',
-              {ERR => "$prog: invalid suffix in input '7000FooF': 'FooF'\n"},
+              {ERR => "$prog: invalid suffix in input: '7000FooF'\n"},
               {EXIT => '1'}],
 
      ## GROUPING
@@ -158,7 +158,7 @@ my @Tests =
              {OUT=>'Hello 40000000 World 90G'}],
      ['field-3', '--field 3 --from=auto "Hello 40M World 90G"',
              {OUT=>"Hello 40M "},
-             {ERR=>"$prog: invalid input number 'World'\n"},
+             {ERR=>"$prog: no digits found: 'World'\n"},
              {EXIT => 1},],
      # Last field - no text after number
      ['field-4', '--field 4 --from=auto "Hello 40M World 90G"',
@@ -175,7 +175,7 @@ my @Tests =
      ['field-7', '--field 3 --to=si "Hello World"', {OUT=>"Hello World"}],
      ['field-8', '--field 3 --debug --to=si "Hello World"',
              {OUT=>"Hello World"},
-             {ERR=>"$prog: Input line is too short, no numbers found " .
+             {ERR=>"$prog: input line is too short, no numbers found " .
                    "to convert in field 3\n"}],
 
 
@@ -248,6 +248,70 @@ my @Tests =
              {OUT=>"hello\nworld\nsize\n4.9K\n88K"}],
 
 
+     ## human_strtod testing
+
+     # NO_DIGITS_FOUND
+     ['strtod-1', '--from=si "foo"',
+             {ERR=>"$prog: no digits found: 'foo'\n"},
+             {EXIT=> 1}],
+     ['strtod-2', '--from=si ""',
+             {ERR=>"$prog: no digits found: ''\n"},
+             {EXIT=> 1}],
+
+     # INTEGRAL_OVERFLOW
+     ['strtod-3', '--from=si "1234567890123456789012345678901234567890'.
+                  '1234567890123456789012345678901234567890"',
+             {ERR=>"$prog: value too large to be converted: '" .
+                     "1234567890123456789012345678901234567890" .
+                     "1234567890123456789012345678901234567890'\n",
+                     },
+             {EXIT=> 1}],
+
+     #FRACTION_FORBIDDEN_WITHOUT_SCALING
+     ['strtod-4', '12.2',
+             {ERR=>"$prog: cannot process decimal-point value without " .
+                     "scaling: '12.2' (consider using --from)\n"},
+             {EXIT=>1}],
+
+     # FRACTION_NO_DIGITS_FOUND
+     ['strtod-5', '--from=si 12.',
+             {ERR=>"$prog: no digits in fraction: '12.'\n"},
+             {EXIT=>1}],
+     ['strtod-6', '--from=si 12.K',
+             {ERR=>"$prog: no digits in fraction: '12.K'\n"},
+             {EXIT=>1}],
+
+     # whitespace is not allowed after decimal-point
+     ['strtod-6.1', '--from=si --delimiter=, "12.  2"',
+             {ERR=>"$prog: no digits in fraction: '12.  2'\n"},
+             {EXIT=>1}],
+
+     # FRACTION_OVERFLOW
+     ['strtod-7', '--from=si "12.1234567890123456789012345678901234567890'.
+                  '1234567890123456789012345678901234567890"',
+             {ERR=>"$prog: fraction value too large to be converted: '" .
+                     "12.1234567890123456789012345678901234567890" .
+                     "1234567890123456789012345678901234567890'\n",
+                     },
+             {EXIT=> 1}],
+
+     # FRACTION_REQUIRES_SUFFIX
+     ['strtod-8', '--from=si 12.2',
+             {ERR=>"$prog: decimal-point values require a suffix" .
+                    " (e.g. K/M/G/T): '12.2'\n"},
+             {EXIT=>1}],
+
+     # INVALID_SUFFIX
+     ['strtod-9', '--from=si 12.2Q',
+             {ERR=>"$prog: invalid suffix in input: '12.2Q'\n"},
+             {EXIT=>1}],
+
+     # VALID_BUT_FORBIDDEN_SUFFIX
+     ['strtod-10', '12M',
+             {ERR => "$prog: rejecting suffix " .
+                     "in input: '12M' (consider using --from)\n"},
+             {EXIT=>1}],
+
     );
 
 my @Locale_Tests =
@@ -258,6 +322,10 @@ my @Locale_Tests =
 
      # Locale with grouping
      ['lcl-grp-2', '--from=si --grouping 7M',   {OUT=>"7 000 000"},
+             {ENV=>"LC_ALL=$locale"}],
+
+     # Input with locale'd decimal-point
+     ['lcl-stdtod-1', '--from=si 12,2K', {OUT=>"12200"},
              {ENV=>"LC_ALL=$locale"}],
   );
 push @Tests, @Locale_Tests if $locale ne "C";

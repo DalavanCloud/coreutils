@@ -141,42 +141,7 @@ static int debug=0;
 /* debugging for developers - to be removed in final version? */
 static int dev_debug=0;
 
-/*
-   Converts a string to a long-long-int, optionally handling suffixes.
-   Mostly copied from <gnulib>/lib/xstdtol.c, with modified functionality.
- */
-
-//The following #defines are copied from "xstrtoumax.c"
-#define __strtol strtoumax
 #define __strtol_t uintmax_t
-#define STRTOL_T_MINIMUM 0
-#define STRTOL_T_MAXIMUM UINTMAX_MAX
-
-static strtol_error
-bkm_scale (__strtol_t *x, int scale_factor)
-{
-  if (TYPE_SIGNED (__strtol_t) && *x < STRTOL_T_MINIMUM / scale_factor)
-    {
-      *x = STRTOL_T_MINIMUM;
-      return LONGINT_OVERFLOW;
-    }
-  if (STRTOL_T_MAXIMUM / scale_factor < *x)
-    {
-      *x = STRTOL_T_MAXIMUM;
-      return LONGINT_OVERFLOW;
-    }
-  *x *= scale_factor;
-  return LONGINT_OK;
-}
-
-static strtol_error
-bkm_scale_by_power (__strtol_t *x, int base, int power)
-{
-  strtol_error err = LONGINT_OK;
-  while (power--)
-    err |= bkm_scale (x, base);
-  return err;
-}
 
 static inline int
 valid_suffix ( const char suf )
@@ -220,65 +185,161 @@ suffix_power ( const char suf )
     }
 }
 
-static strtol_error
-human_xstrtol (const char *s, char **ptr,
-           __strtol_t *val, enum scale_type scaling)
+static long double
+powerld (long double base, unsigned int x)
 {
-  char *t_ptr;
-  char **p;
-  __strtol_t tmp;
-  strtol_error err = LONGINT_OK;
-  int base=(scaling==scale_IEC)?1024:1000; /* 'auto' is checked below */
-  int overflow=0;
-  int skip=1;
-  const int strtol_base = 10 ; //TODO: allow user-changable base?
+  long double result=base;
+  if (x==0)
+    return 1;
+  /* TODO: check for overflow, inf? */
+  while (--x)
+    result *= base;
+  return result;
+}
 
+enum human_strtod_error
+{
+  OK=0,
+  NO_DIGITS_FOUND,
+  INTEGRAL_OVERFLOW,
+  INVALID_NUMBER,
+  FRACTION_FORBIDDEN_WITHOUT_SCALING,
+  FRACTION_NO_DIGITS_FOUND,
+  FRACTION_OVERFLOW,
+  FRACTION_INVALID_NUMBER,
+  FRACTION_REQUIRES_SUFFIX,
+  VALID_BUT_FORBIDDEN_SUFFIX,
+  INVALID_SUFFIX,
 
-  p = (ptr ? ptr : &t_ptr);
+};
+
+static enum human_strtod_error
+human_strtod (const char *input_str,
+              char* /*output*/ *ptr, /*required, unlike in stdtod */
+              long double /*output*/ *value, /* required */
+              enum scale_type allowed_scaling)
+{
+  char *pi, *pf;
+  uintmax_t integral,fraction=0;
+  int have_fractions=0;
+  int power=0;
+  /* 'scale_auto' is checked below */
+  int scale_base=(allowed_scaling==scale_IEC)?1024:1000;
+  const int base = 10 ;
+
+  const char *decimal_point = nl_langinfo (RADIXCHAR);
+  if (decimal_point==NULL || strlen (decimal_point)==0)
+    decimal_point = ".";
+  const int decimal_point_length=strlen (decimal_point);
+
+  if (dev_debug)
+    fprintf (stderr,"string-to-double:\n  input string: '%s'\n  " \
+            "locale decimal-point: '%s'\n", input_str,decimal_point);
 
   errno = 0;
-  tmp = __strtol (s, p, strtol_base);
+  /* TODO: accept locale'd grouped values for the integral part */
+  integral = strtoumax (input_str, &pi, base);
+  if (pi==input_str)
+    return NO_DIGITS_FOUND;
+  if (errno==ERANGE)
+    return INTEGRAL_OVERFLOW;
+  if (errno!=0)
+    return INVALID_NUMBER; /* should never happen? */
 
-  if (*p == s)
+  *value = integral;
+
+  *ptr = pi;
+
+  if (dev_debug)
+    fprintf (stderr,"  integral-part: %lu\n", integral);
+
+  /* optional decimal point + fraction */
+  if (STREQ_LEN (pi,decimal_point,decimal_point_length))
     {
-      /* No digits found */
-        return LONGINT_INVALID;
-    }
-  else if (errno != 0)
-    {
-      if (errno != ERANGE)
-        return LONGINT_INVALID;
-      err = LONGINT_OVERFLOW;
+      if (allowed_scaling==scale_none)
+        return FRACTION_FORBIDDEN_WITHOUT_SCALING;
+
+      errno = 0 ;
+      pi += decimal_point_length;
+      if (!isdigit (*pi))
+        return FRACTION_NO_DIGITS_FOUND;
+      fraction = strtoumax (pi, &pf, base);
+      if (pf==pi)
+        return FRACTION_NO_DIGITS_FOUND;
+      if (errno==ERANGE)
+        return FRACTION_OVERFLOW;
+      if (errno!=0)
+        return FRACTION_INVALID_NUMBER;
+
+      int exponent = pf-pi;
+      long double f = ((long double)fraction)/powerld (10,exponent);
+
+      have_fractions=1;
+
+      if (dev_debug)
+        fprintf (stderr,"  fraction-part: %lu (exponent=%d)\n" \
+                       "  fraction-value: %Lf\n",
+              fraction,exponent,f);
+
+      *value += f;
+
+      if (dev_debug)
+        fprintf (stderr,"  combined-value: %Lf\n", *value);
+
+      *ptr= pf;
     }
 
-  if (**p == '\0' || scaling==scale_none || !valid_suffix (**p))
+  /* no suffix / trailing characters */
+  if (**ptr=='\0')
     {
-      /* no suffixes after the number, or no scaling requested,
-         or no valid suffixes found */
-      *val = tmp;
-      return err;
+      if (have_fractions)
+        return FRACTION_REQUIRES_SUFFIX;
+
+      if (dev_debug)
+        fprintf (stderr,"  no fraction,suffix detected\n" \
+                       "  returning value: %Lf\n", *value);
+
+      return OK;
     }
 
-  if (scaling==scale_auto && (p[0][1]=='i'))
+  /* process suffix */
+  if (!valid_suffix (**ptr))
+    return INVALID_SUFFIX;
+
+  if (allowed_scaling==scale_none)
+    return VALID_BUT_FORBIDDEN_SUFFIX;
+
+  power = suffix_power (**ptr);
+  (*ptr)++; /* skip first suffix character */
+
+  if (allowed_scaling==scale_auto && **ptr=='i')
     {
       /* auto-scaling enabled, and the first suffix character
          is followed by an 'i' (e.g. Ki, Mi, Gi) */
-      base = 1024 ;
-      ++skip;
+      scale_base = 1024 ;
+      (*ptr)++; /* skip second  ('i') suffix character */
+      if (dev_debug)
+        fprintf (stderr,"  Auto-scaling, found 'i', switching to base %d\n",
+                scale_base);
     }
 
-  overflow = bkm_scale_by_power (&tmp, base, suffix_power (**p));
+  long double multiplier = powerld (scale_base,power);
 
-  err |= overflow;
+  if (dev_debug)
+    fprintf (stderr, "  suffix power=%d^%d = %Lf\n",
+          scale_base,power,multiplier);
 
-  *p += skip; /* skip the suffix characters */
+  (*value) = (*value) * multiplier;
 
-  *val = tmp;
-  return err;
+  if (dev_debug)
+    fprintf (stderr, "  returning value: %Lf\n", *value);
+
+  return OK;
 }
 
+
 static void
-human_xstrtol_fatal (enum strtol_error err,
+human_strtod_fatal (enum human_strtod_error err,
                      char const *input_str)
 {
   char const *msgid;
@@ -288,16 +349,52 @@ human_xstrtol_fatal (enum strtol_error err,
     default:
       abort ();
 
-    case LONGINT_INVALID:
-      msgid = N_("invalid input number '%s'");
+    case NO_DIGITS_FOUND:
+      msgid = N_("no digits found: '%s'");
       break;
 
-    case LONGINT_OVERFLOW:
-      msgid = N_("input value too large '%s'");
+    case INTEGRAL_OVERFLOW:
+      msgid = N_("value too large to be converted: '%s'");
       break;
+
+    case INVALID_NUMBER:
+      msgid = N_("invalid number: '%s'");
+      break;
+
+    case FRACTION_FORBIDDEN_WITHOUT_SCALING:
+      msgid = N_("cannot process decimal-point value without scaling: '%s'" \
+                 " (consider using --from)");
+      break;
+
+    case FRACTION_NO_DIGITS_FOUND:
+      msgid = N_("no digits in fraction: '%s'");
+      break;
+
+    case FRACTION_OVERFLOW:
+      msgid = N_("fraction value too large to be converted: '%s'");
+      break;
+
+    case FRACTION_INVALID_NUMBER:
+      msgid = N_("invalid fraction number: '%s'");
+      break;
+
+    case FRACTION_REQUIRES_SUFFIX:
+      msgid = N_("decimal-point values require a suffix (e.g. K/M/G/T): '%s'");
+      break;
+
+    case VALID_BUT_FORBIDDEN_SUFFIX:
+      msgid = N_("rejecting suffix in input: '%s' (consider using --from)");
+      break;
+
+    case INVALID_SUFFIX:
+      msgid = N_("invalid suffix in input: '%s'");
+      break;
+
     }
+
   error (EXIT_FAILURE,0,gettext (msgid), input_str);
 }
+
 
 /* Convert a string of decimal digits, N_STRING, with an optional suffinx
    to an integral value.  Upon successful conversion,
@@ -430,33 +527,23 @@ chomp (char *s)
 static __strtol_t
 parse_number (const char* str)
 {
-  char *ptr;
+  char *ptr=NULL;
   __strtol_t val=0;
 
-  strtol_error err = human_xstrtol (str,&ptr,&val,scale_from);
-  if (err != LONGINT_OK)
-    human_xstrtol_fatal (err, str);
+  long double dval=0;
+  enum human_strtod_error err = human_strtod (str, &ptr, &dval, scale_from);
+  if (err != OK)
+    human_strtod_fatal (err,str);
+  val=(__strtol_t)dval; /* NOTE: Possible data loss here, double->uintmax_t */
 
   if (dev_debug)
     fprintf (stderr,"Parsing number:\n  input string: '%s'\n  " \
             "remaining characters: '%s'\n  numeric value: %zu\n",
             str,ptr,val);
 
-  if ( *ptr!='\0' )
-    {
-      if ((strlen (ptr)==1) && valid_suffix (*ptr))
-        {
-          /* This is a potentially valid suffix, so try to be helpful */
-         error (EXIT_FAILURE,0,_("not accepting suffix '%s' in input '%s'" \
-                               " (consider using --from)"), ptr, str);
-        }
-      else
-        {
-         /* Invalid trailing characters */
-         error (EXIT_FAILURE,0,_("invalid suffix in input '%s': '%s'"),
-                str, ptr);
-        }
-    }
+  if ( ptr && *ptr!='\0' )
+       error (EXIT_FAILURE,0,_("invalid suffix in input '%s': '%s'"),
+              str, ptr);
   return val;
 }
 
