@@ -40,17 +40,16 @@ my @Tests =
      ['6', {IN_PIPE => "1234"},            {OUT => "1234"}],
      ['7', '--from=si', {IN_PIPE => "2K"}, {OUT => "2000"}],
 
-     #NOTE: "SI" outputs lower "k"?
-     ['8',  '--to=si 2000',                   {OUT => "2.0k"}],
-     ['9',  '--to=si 2001',                   {OUT => "2.1k"}],
-     ['10', '--to=si 1999',                   {OUT => "2.0k"}],
-     ['11', '--to=si --round=floor   2001',   {OUT => "2.0k"}],
-     ['12', '--to=si --round=floor   1999',   {OUT => "1.9k"}],
-     ['13', '--to=si --round=ceiling 1901',   {OUT => "2.0k"}],
-     ['14', '--to=si --round=floor   1901',   {OUT => "1.9k"}],
-     ['15', '--to=si --round=nearest 1901',   {OUT => "1.9k"}],
-     ['16', '--to=si --round=nearest 1945',   {OUT => "1.9k"}],
-     ['17', '--to=si --round=nearest 1955',   {OUT => "2.0k"}],
+     ['8',  '--to=si 2000',                   {OUT => "2.0K"}],
+     ['9',  '--to=si 2001',                   {OUT => "2.1K"}],
+     ['10', '--to=si 1999',                   {OUT => "2.0K"}],
+     ['11', '--to=si --round=floor   2001',   {OUT => "2.0K"}],
+     ['12', '--to=si --round=floor   1999',   {OUT => "1.9K"}],
+     ['13', '--to=si --round=ceiling 1901',   {OUT => "2.0K"}],
+     ['14', '--to=si --round=floor   1901',   {OUT => "1.9K"}],
+     ['15', '--to=si --round=nearest 1901',   {OUT => "1.9K"}],
+     ['16', '--to=si --round=nearest 1945',   {OUT => "1.9K"}],
+     ['17', '--to=si --round=nearest 1955',   {OUT => "2.0K"}],
 
      ['18',  '--to=iec 2048',                  {OUT => "2.0K"}],
      ['19',  '--to=iec 2049',                  {OUT => "2.1K"}],
@@ -62,11 +61,11 @@ my @Tests =
      ['25', '--to=iec --round=nearest 1996',   {OUT => "1.9K"}],
      ['26', '--to=iec --round=nearest 1997',   {OUT => "2.0K"}],
 
-     ['27', '--from-unit=512 4',   {OUT => "2048"}],
-     ['28', '--to-unit=512 2048',   {OUT => "4"}],
+     ['unit-1', '--from-unit=512 4',   {OUT => "2048"}],
+     ['unit-2', '--to-unit=512 2048',   {OUT => "4"}],
 
-     ['29', '--from-unit=512 --from=si 4M',   {OUT => "2048000000"}],
-     ['30', '--from-unit=512 --from=iec --to=iec 4M',   {OUT => "2.0G"}],
+     ['unit-3', '--from-unit=512 --from=si 4M',   {OUT => "2048000000"}],
+     ['unit-4', '--from-unit=512 --from=iec --to=iec 4M',   {OUT => "2.0G"}],
 
      # Test Suffix logic
      ['suf-1', '4000',    {OUT=>'4000'}],
@@ -103,7 +102,7 @@ my @Tests =
      ['suf-13', '--suffix=Foo 70',                  {OUT=>'70Foo'}],
      ['suf-14', '--suffix=Foo --from=si 70K',       {OUT=>'70000Foo'}],
      ['suf-15', '--suffix=Foo --from=si 70KFoo',    {OUT=>'70000Foo'}],
-     ['suf-16', '--suffix=Foo --to=si   7000Foo',    {OUT=>'7.0kFoo'}],
+     ['suf-16', '--suffix=Foo --to=si   7000Foo',    {OUT=>'7.0KFoo'}],
      ['suf-17', '--suffix=Foo --to=si   7000Bar',
               {ERR => "$prog: invalid suffix in input: '7000Bar'\n"},
               {EXIT => '1'}],
@@ -126,20 +125,20 @@ my @Tests =
      ['pad-3', '--padding=A 5',
              {ERR => "$prog: invalid padding value 'A'\n"},
              {EXIT => '1'}],
-     ['pad-4', '--padding=10 --to=si 50000',             {OUT=>'       50k'}],
-     ['pad-5', '--padding=-10 --to=si 50000',            {OUT=>'50k       '}],
+     ['pad-4', '--padding=10 --to=si 50000',             {OUT=>'       50K'}],
+     ['pad-5', '--padding=-10 --to=si 50000',            {OUT=>'50K       '}],
 
      # padding causing truncation, data loss
      ['pad-6', '--padding=2 --to=si 1000', {OUT=>'1.'},
-             {ERR => "$prog: value '1.0k' truncated due to padding, " .
+             {ERR => "$prog: value '1.0K' truncated due to padding, " .
                 "possible data loss\n"}],
 
 
      # Padding + suffix
      ['pad-7', '--padding=10 --suffix=foo --to=si 50000',
-             {OUT=>'       50kfoo'}],
+             {OUT=>'       50Kfoo'}],
      ['pad-8', '--padding=-10 --suffix=foo --to=si 50000',
-             {OUT=>'50k       foo'}],
+             {OUT=>'50K       foo'}],
 
 
      # Delimiters
@@ -215,10 +214,10 @@ my @Tests =
 
      # The 'M' is treated as a delimiter, and so the input value is '4000'
      ['mix-13', '--delimiter=M --to=si --from=auto 4000M5000M9000',
-             {OUT=>"4.0kM5000M9000"}],
+             {OUT=>"4.0KM5000M9000"}],
      # 'M' is the delimiter, so the second input field is '5000'
      ['mix-14', '--delimiter=M --field 2 --from=auto --to=si 4000M5000M9000',
-             {OUT=>"4000M5.0kM9000"}],
+             {OUT=>"4000M5.0KM9000"}],
 
 
 

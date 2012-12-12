@@ -141,8 +141,6 @@ static int debug=0;
 /* debugging for developers - to be removed in final version? */
 static int dev_debug=0;
 
-#define __strtol_t uintmax_t
-
 static inline int
 valid_suffix ( const char suf )
 {
@@ -185,6 +183,44 @@ suffix_power ( const char suf )
     }
 }
 
+static inline const char*
+suffix_power_character ( unsigned int power )
+{
+  switch (power)
+    {
+    case 0:
+      return "";
+
+    case 1:
+      return "K";
+
+    case 2:
+      return "M";
+
+    case 3:
+      return "G";
+
+    case 4:
+      return "T";
+
+    case 5:
+      return "P";
+
+    case 6:
+      return "E";
+
+    case 7:
+      return "Z";
+
+    case 8:
+      return "Y";
+
+    default:
+      return "(error)";
+    }
+}
+
+/* Similar to 'powl(3)' but without requiring 'libm' */
 static long double
 powerld (long double base, unsigned int x)
 {
@@ -196,6 +232,70 @@ powerld (long double base, unsigned int x)
     result *= base;
   return result;
 }
+
+/* scales down 'val', returns 'updated val' and 'x', such that
+ *   val*base^X = original val
+ *   Similar to "frexpl(3)" but without requiring 'libm',
+ *   allowing only integer scale, limited functionlity and error checking.*/
+static long double
+expld (long double val, unsigned int base, unsigned int /*output*/ *x)
+{
+  unsigned int power=0;
+  while (val>=base)
+    {
+      ++power;
+      val /= base;
+    }
+  if (x)
+    *x = power;
+  return val;
+}
+
+/* EXTREMELY limited 'round' - without 'libm' .
+ * Assumes only positive, small  values */
+static inline int
+simple_round_nearest (long double val)
+{
+  return (int)(val+0.5);
+}
+
+/* EXTREMELY limited 'floor' - without 'libm' .
+ * Assumes only positive, small  values */
+static inline int
+simple_round_floor (long double val)
+{
+  return (int)val;
+}
+
+/* EXTREMELY limited 'ceil' - without 'libm' .
+ * Assumes only positive, small  values */
+static inline int
+simple_round_ceiling (long double val)
+{
+  return simple_round_floor (val)
+         + (((val - simple_round_floor (val))>0) ? 1 : 0);
+}
+
+static inline int
+__attribute ((pure))
+simple_round (long double val, enum round_type t)
+{
+  switch (t)
+    {
+    case round_ceiling:
+      return simple_round_ceiling (val);
+
+    case round_floor:
+      return simple_round_floor (val);
+
+    case round_nearest:
+      return simple_round_nearest (val);
+
+    default:
+      abort ();
+    }
+}
+
 
 enum human_strtod_error
 {
@@ -395,6 +495,79 @@ human_strtod_fatal (enum human_strtod_error err,
   error (EXIT_FAILURE,0,gettext (msgid), input_str);
 }
 
+static char*
+double_to_human (long double val,
+                      char* buf, size_t buf_size,
+                      enum scale_type scale,
+                      int group,
+                      enum round_type round)
+{
+  if (dev_debug)
+    fprintf (stderr,"double_to_human:\n");
+
+  if (scale==scale_none)
+    {
+      if (dev_debug)
+          fprintf (stderr,
+                   (group)?"  no scaling, returning (grouped) value: %'.0Lf\n":
+                           "  no scaling, returning value: %.0Lf\n",
+                   val);
+
+      int i = snprintf (buf,buf_size,(group)?"%'.0Lf":"%.0Lf",val);
+      if (i<0 || i>=(int)buf_size)
+        error (EXIT_FAILURE,0,_("failed to prepare value '%Lf' for printing"),
+              val);
+      return buf;
+    }
+
+  /* Scaling requested by user */
+  double scale_base=(scale==scale_SI)?1000:1024;
+
+  /* Normalize val to scale */
+  unsigned int power=0;
+  val = expld (val, scale_base, &power);
+  if (dev_debug)
+    fprintf (stderr,"  scaled value to %Lf * %0.f ^ %d\n",
+             val, scale_base, power);
+
+  /* Perform rounding */
+  int ten_or_less = 0;
+  if (val<10)
+    {
+      /* for values less than 10, we allow one decimal-point digit,
+       * so adjust before rounding */
+      ten_or_less = 1;
+      val *= 10;
+    }
+  val = simple_round (val, round);
+  /* two special cases after rounding:
+   * 1. a "999.99" can turn into 1000 - so scale down
+   * 2. a "9.99" can turn into 10 - so don't display decimal-point
+   */
+  if (val>=scale_base)
+    {
+      val /= scale_base;
+      power++;
+    }
+  if (ten_or_less)
+    {
+      val /= 10;
+      if (val>=10)
+        ten_or_less = 0 ;
+    }
+  if (dev_debug)
+    fprintf (stderr,"  after rounding, value=%Lf * %0.f ^ %d\n",
+             val, scale_base, power);
+
+  snprintf (buf,buf_size, (ten_or_less)?"%.1Lf%s":"%.0Lf%s",
+           val,suffix_power_character (power));
+
+
+  if (dev_debug)
+    fprintf (stderr,"  returning value: '%s'\n", buf);
+
+  return buf;
+}
 
 /* Convert a string of decimal digits, N_STRING, with an optional suffinx
    to an integral value.  Upon successful conversion,
@@ -524,21 +697,19 @@ chomp (char *s)
    The input string must not contain any extra characters
    (except valid suffixes if 'from' scaling is enabled).
 */
-static __strtol_t
+static long double
 parse_number (const char* str)
 {
   char *ptr=NULL;
-  __strtol_t val=0;
 
-  long double dval=0;
-  enum human_strtod_error err = human_strtod (str, &ptr, &dval, scale_from);
+  long double val=0;
+  enum human_strtod_error err = human_strtod (str, &ptr, &val, scale_from);
   if (err != OK)
     human_strtod_fatal (err,str);
-  val=(__strtol_t)dval; /* NOTE: Possible data loss here, double->uintmax_t */
 
   if (dev_debug)
     fprintf (stderr,"Parsing number:\n  input string: '%s'\n  " \
-            "remaining characters: '%s'\n  numeric value: %zu\n",
+            "remaining characters: '%s'\n  numeric value: %Lf\n",
             str,ptr,val);
 
   if ( ptr && *ptr!='\0' )
@@ -554,15 +725,15 @@ parse_number (const char* str)
    with padding and alignment.
 */
 static void
-print_number (const __strtol_t val)
+print_number (const long double val)
 {
   /* Generate Output */
-  char buf[LONGEST_HUMAN_READABLE + 1];
-  char *s = human_readable (val, buf, human_print_options,
-                           from_unit_size,to_unit_size);
+  char buf[128];
+  char *s = double_to_human (val, buf, sizeof (buf),
+                             scale_to, grouping, _round);
 
   if (dev_debug)
-    fprintf (stderr,"Formatting output:\n  value: %zu\n  humanized: '%s'\n",
+    fprintf (stderr,"Formatting output:\n  value: %Lf\n  humanized: '%s'\n",
             val,s);
 
   if (padding_width)
@@ -610,7 +781,9 @@ process_suffixed_number (char* text)
         }
     }
 
-  const __strtol_t val = parse_number (text);
+  long double val = parse_number (text);
+  if (from_unit_size!=1 || to_unit_size != 1)
+          val = (val * from_unit_size) / to_unit_size;
   print_number (val);
 
   if (suffix)
