@@ -117,6 +117,16 @@ static struct option const longopts[] =
 /* If delimtier has this value, blanks separate fields.  */
 enum { DELIMITER_DEFAULT = CHAR_MAX + 1 };
 
+/* Maximum number of digits we can safely handle
+ * without precision loss, if scaling is 'none' */
+enum { MAX_UNSCALED_DIGITS = 18 };
+
+/* Maximum number of digits we can work with.
+ * This is equivalent to 999Y.
+ * NOTE: 'long double' can handle more than that, but there's
+ *       no official suffix assigned beyond Yotta (1000^8) */
+enum { MAX_ACCEPTABLE_DIGITS = 27 } ;
+
 static enum scale_type scale_from=scale_none;
 static enum scale_type scale_to=scale_none;
 static enum round_type _round=round_ceiling;
@@ -311,7 +321,7 @@ simple_round (long double val, enum round_type t)
  * Returns:
  *    SSE_OK - valid number.
  *    SSE_OK_PRECISION_LOSS - if more than 18 digits were used.
- *    SSE_OVERFLOW          - if more than 24 digits (999Y) were used.
+ *    SSE_OVERFLOW          - if more than 27 digits (999Y) were used.
  *    SSE_INVALID_NUMBER    - if no digits were found.
  */
 enum simple_strtod_error
@@ -344,15 +354,16 @@ simple_strtod_int (const char *input_str,
       if (digit<0 || digit>9)
         return SSE_INVALID_NUMBER; /* can this happen in some strange locale? */
 
-      if (digits>18)
-        e = SSE_OK_PRECISION_LOSS;
-      if (digits>24)
+      if (digits>MAX_UNSCALED_DIGITS)
+           e = SSE_OK_PRECISION_LOSS;
+
+      ++digits;
+      if (digits>MAX_ACCEPTABLE_DIGITS)
         return SSE_OVERFLOW;
 
       val *= 10;
       val += digit;
 
-      ++digits;
       ++(*ptr);
     }
   if (digits==0)
@@ -381,6 +392,7 @@ simple_strtod_float (const char *input_str,
   if (e!=SSE_OK && e!=SSE_OK_PRECISION_LOSS)
     return e;
 
+
   /* optional decimal point + fraction */
   if (STREQ_LEN (*ptr,decimal_point,decimal_point_length))
     {
@@ -389,7 +401,7 @@ simple_strtod_float (const char *input_str,
 
       (*ptr) += decimal_point_length;
       enum simple_strtod_error e2 = simple_strtod_int (*ptr,&ptr2,&val_frac);
-      if (e2!=SSE_OK && e!=SSE_OK_PRECISION_LOSS)
+      if (e2!=SSE_OK && e2!=SSE_OK_PRECISION_LOSS)
         return e2;
       if (e2==SSE_OK_PRECISION_LOSS)
         e = e2 ; /* propegate warning */
@@ -444,7 +456,7 @@ simple_strtod_human (const char *input_str,
         fprintf (stderr,"  no fraction,suffix detected\n" \
                        "  returning value: %Lf (%LG)\n", *value, *value);
 
-      return SSE_OK;
+      return e;
     }
 
   /* process suffix */
@@ -480,7 +492,7 @@ simple_strtod_human (const char *input_str,
   if (dev_debug)
     fprintf (stderr,"  returning value: %Lf (%LG)\n", *value, *value);
 
-  return SSE_OK;
+  return e;
 }
 
 
@@ -584,8 +596,8 @@ double_to_human (long double val,
       val /= 10;
 
   /* should "7.0" be printed as "7" ?
-   * if removing the ".0" is preffered, enable the third condition */
-  int show_decimal_point = (val!=0) && (val<10) ;
+   * if removing the ".0" is preffered, enable the fourth condition */
+  int show_decimal_point = (val!=0) && (val<10) && (power>0) ;
                                 /* && (val>simple_round_floor (val)))*/
 
   if (dev_debug)
@@ -722,34 +734,29 @@ chomp (char *s)
 
 
 /*
-   Parsesa numeric value from a string.
-   Returns the integer value.
+   Parses a numeric value (with optional suffix) from a string.
+   Returns a long double value.
 
-   On error, exits with a proper error message.
+   If there's an error converting the string to value - exits with
+   an error.
 
-   The input string must not contain any extra characters
-   (except valid suffixes if 'from' scaling is enabled).
+   If there are any trailing characters after the number
+   (besides a valid suffix) - exits with an error.
 */
-static long double
-parse_number (const char* str)
+static enum simple_strtod_error
+parse_human_number (const char* str, long double /*output*/ *value)
 {
   char *ptr=NULL;
 
-  long double val=0;
   enum simple_strtod_error e =
-    simple_strtod_human (str, &ptr, &val, scale_from);
+    simple_strtod_human (str, &ptr, value, scale_from);
   if (e!= SSE_OK && e!=SSE_OK_PRECISION_LOSS)
     simple_strtod_fatal (e,str);
-
-  if (dev_debug)
-    fprintf (stderr,"Parsing number:\n  input string: '%s'\n  " \
-            "remaining characters: '%s'\n  numeric value: %Lf (%LG)\n",
-            str,ptr,val,val);
 
   if ( ptr && *ptr!='\0' )
        error (EXIT_FAILURE,0,_("invalid suffix in input '%s': '%s'"),
               str, ptr);
-  return val;
+  return e;
 }
 
 
@@ -763,6 +770,17 @@ print_number (const long double val)
 {
   /* Generate Output */
   char buf[128];
+
+  /* Can't reliably print too-large values without auto-scaling */
+  unsigned int x;
+  expld (val,10,&x);
+  if (scale_to==scale_none && x>MAX_UNSCALED_DIGITS)
+    error (EXIT_FAILURE,0,_("value too large to be printed: '%Lg'" \
+                             " (consider using --to)"), val);
+  if (x>MAX_ACCEPTABLE_DIGITS-1)
+    error (EXIT_FAILURE,0,_("value too large to be printed: '%Lg'" \
+                             " (cannot handle values > 999Y)"), val);
+
   char *s = double_to_human (val, buf, sizeof (buf),
                              scale_to, grouping, _round);
 
@@ -815,9 +833,14 @@ process_suffixed_number (char* text)
         }
     }
 
-  long double val = parse_number (text);
+  long double val=0;
+  enum simple_strtod_error e = parse_human_number (text,&val);
+  if (e==SSE_OK_PRECISION_LOSS && debug)
+    error (0,0,_("large input value '%s': possible precision loss"),text);
+
   if (from_unit_size!=1 || to_unit_size != 1)
           val = (val * from_unit_size) / to_unit_size;
+
   print_number (val);
 
   if (suffix)

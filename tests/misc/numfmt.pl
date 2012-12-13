@@ -370,20 +370,126 @@ my @Tests =
 
      # Large Values
      ['large-1','1000000000000000', {OUT=>"1000000000000000"}],
+     # 18 digits is OK
      ['large-2','1000000000000000000', {OUT=>"1000000000000000000"}],
+     # 19 digits is too much (without output scaling)
+     ['large-3','10000000000000000000',
+             {ERR => "$prog: value too large to be printed: '1e+19' " .
+                     "(consider using --to)\n"},
+             {EXIT=>1}],
 
-     #FIX ME: can't read numbers so big - strtoumax fails
-#     ['large-3','1000000000000000000000', {OUT=>"1000000000000000000000"}],
+     # Test input:
+     # Up to 27 digits is OK.
+     ['large-3.1', '--to=si                           1', {OUT=>   "1"}],
+     ['large-3.2', '--to=si                          10', {OUT=>  "10"}],
+     ['large-3.3', '--to=si                         100', {OUT=> "100"}],
+     ['large-3.4', '--to=si                        1000', {OUT=>"1.0K"}],
+     ['large-3.5', '--to=si                       10000', {OUT=> "10K"}],
+     ['large-3.6', '--to=si                      100000', {OUT=>"100K"}],
+     ['large-3.7', '--to=si                     1000000', {OUT=>"1.0M"}],
+     ['large-3.8', '--to=si                    10000000', {OUT=> "10M"}],
+     ['large-3.9', '--to=si                   100000000', {OUT=>"100M"}],
+     ['large-3.10','--to=si                  1000000000', {OUT=>"1.0G"}],
+     ['large-3.11','--to=si                 10000000000', {OUT=> "10G"}],
+     ['large-3.12','--to=si                100000000000', {OUT=>"100G"}],
+     ['large-3.13','--to=si               1000000000000', {OUT=>"1.0T"}],
+     ['large-3.14','--to=si              10000000000000', {OUT=> "10T"}],
+     ['large-3.15','--to=si             100000000000000', {OUT=>"100T"}],
+     ['large-3.16','--to=si            1000000000000000', {OUT=>"1.0P"}],
+     ['large-3.17','--to=si           10000000000000000', {OUT=> "10P"}],
+     ['large-3.18','--to=si          100000000000000000', {OUT=>"100P"}],
+     ['large-3.19','--to=si         1000000000000000000', {OUT=>"1.0E"}],
+     ['large-3.20','--to=si        10000000000000000000', {OUT=> "10E"}],
+     ['large-3.21','--to=si       210000000000000000000', {OUT=>"210E"}],
+     ['large-3.22','--to=si      3210000000000000000000', {OUT=>"3.3Z"}],
+     ['large-3.23','--to=si     43210000000000000000000', {OUT=> "44Z"}],
+     ['large-3.24','--to=si    543210000000000000000000', {OUT=>"544Z"}],
+     ['large-3.25','--to=si   6543210000000000000000000', {OUT=>"6.6Y"}],
+     ['large-3.26','--to=si  76543210000000000000000000', {OUT=> "77Y"}],
+     ['large-3.27','--to=si 876543210000000000000000000', {OUT=>"877Y"}],
 
-     ['large-4','--to=si 1000000000000000000', {OUT=>"1.0E"}],
+     # More than 27 digits is not OK
+     ['large-3.28','--to=si 9876543210000000000000000000',
+             {ERR => "$prog: value too large to be converted: " .
+                     "'9876543210000000000000000000'\n"},
+             {EXIT => 1}],
+
+     # Test Output
+     ['large-4.1', '--from=si  9.7M',               {OUT=>"9700000"}],
+     ['large-4.2', '--from=si  10M',              {OUT =>"10000000"}],
+     ['large-4.3', '--from=si  200M',            {OUT =>"200000000"}],
+     ['large-4.4', '--from=si  3G',             {OUT =>"3000000000"}],
+     ['large-4.5', '--from=si  40G',           {OUT =>"40000000000"}],
+     ['large-4.6', '--from=si  500G',         {OUT =>"500000000000"}],
+     ['large-4.7', '--from=si  6T',          {OUT =>"6000000000000"}],
+     ['large-4.8', '--from=si  70T',        {OUT =>"70000000000000"}],
+     ['large-4.9', '--from=si  800T',      {OUT =>"800000000000000"}],
+     ['large-4.10','--from=si  9P',       {OUT =>"9000000000000000"}],
+     ['large-4.11','--from=si  10P',     {OUT =>"10000000000000000"}],
+     ['large-4.12','--from=si  200P',   {OUT =>"200000000000000000"}],
+     ['large-4.13','--from=si  3E',    {OUT =>"3000000000000000000"}],
+
+     # More than 18 digits of output without scaling - no good.
+     ['large-4.14','--from=si  40E',
+             {ERR => "$prog: value too large to be printed: '4e+19' " .
+                     "(consider using --to)\n"},
+             {EXIT => 1}],
+     ['large-4.15','--from=si  500E',
+             {ERR => "$prog: value too large to be printed: '5e+20' " .
+                     "(consider using --to)\n"},
+             {EXIT => 1}],
+     ['large-4.16','--from=si  6Z',
+             {ERR => "$prog: value too large to be printed: '6e+21' " .
+                     "(consider using --to)\n"},
+             {EXIT => 1}],
+     ['large-4.17','--from=si  70Z',
+             {ERR => "$prog: value too large to be printed: '7e+22' " .
+                     "(consider using --to)\n"},
+             {EXIT => 1}],
+     ['large-4.18','--from=si  800Z',
+             {ERR => "$prog: value too large to be printed: '8e+23' " .
+                     "(consider using --to)\n"},
+             {EXIT => 1}],
+     ['large-4.19','--from=si  9Y',
+             {ERR => "$prog: value too large to be printed: '9e+24' " .
+                     "(consider using --to)\n"},
+             {EXIT => 1}],
+     ['large-4.20','--from=si  10Y',
+             {ERR => "$prog: value too large to be printed: '1e+25' " .
+                     "(consider using --to)\n"},
+             {EXIT => 1}],
+     ['large-4.21','--from=si  200Y',
+             {ERR => "$prog: value too large to be printed: '2e+26' " .
+                     "(consider using --to)\n"},
+             {EXIT => 1}],
+
+     ['large-5.1','--to=si 1000000000000000000', {OUT=>"1.0E"}],
      ['large-5','--from=si --to=si 2E', {OUT=>"2.0E"}],
      ['large-6','--from=si --to=si 3.4Z', {OUT=>"3.4Z"}],
      ['large-7','--from=si --to=si 80Y', {OUT=>"80Y"}],
      ['large-8','--from=si --to=si 9000Z', {OUT=>"9.0Y"}],
-     ['large-9','--from=si 9.7Y', {OUT=>"9700000000000000000000000"}],
 
-     #FIXME: can't handle such big numbres
-#     ['large-10','--from=si 999Y', {OUT=>"9700000000000000000000000"}],
+     ['large-10','--from=si --to=si 999Y', {OUT=>"999Y"}],
+     ['large-11','--from=si --to=iec 999Y', {OUT=>"827Y"}],
+     ['large-12','--from=si --round=floor --to=iec 999Y', {OUT=>"826Y"}],
+
+     # units can also affect the output
+     ['large-13','--from=si --from-unit=1000000 9P',
+             {ERR => "$prog: value too large to be printed: '9e+21' " .
+                     "(consider using --to)\n"},
+             {EXIT => 1}],
+     ['large-13.1','--from=si --from-unit=1000000 --to=si 9P', {OUT=>"9.0Z"}],
+
+     # Numbers>999Y are never acceptable, regardless of scaling
+     ['large-14','--from=si --to=si 999Y', {OUT=>"999Y"}],
+     ['large-14.1','--from=si --to=si 1000Y',
+             {ERR => "$prog: value too large to be printed: '1e+27' " .
+                     "(cannot handle values > 999Y)\n"},
+             {EXIT => 1}],
+     ['large-14.2','--from=si --to=si --from-unit=10000 1Y',
+             {ERR => "$prog: value too large to be printed: '1e+28' " .
+                     "(cannot handle values > 999Y)\n"},
+             {EXIT => 1}],
 
     );
 
