@@ -25,7 +25,6 @@
 #include "error.h"
 #include "system.h"
 #include "xstrtol.h"
-#include "human.h"
 
 /* The official name of this program (e.g., no 'g' prefix).  */
 #define PROGRAM_NAME "numfmt"
@@ -133,7 +132,6 @@ static enum round_type _round=round_ceiling;
 static const char *suffix = NULL;
 static uintmax_t from_unit_size=1;
 static uintmax_t to_unit_size=1;
-static int human_print_options=0; /* see enum in 'human.c' */
 static int grouping=0;
 static char *padding_buffer=NULL;
 static size_t padding_buffer_size=0;
@@ -1112,40 +1110,10 @@ main (int argc, char **argv)
 
   auto_padding = (padding_width==0 && delimiter==DELIMITER_DEFAULT);
 
-  switch (_round)
-    {
-    case round_ceiling:
-      human_print_options |= human_ceiling;
-      break;
-    case round_floor:
-      human_print_options |= human_floor;
-      break;
-    case round_nearest:
-      human_print_options |= human_round_to_nearest;
-      break;
-    }
-
-  switch (scale_to)
-    {
-    case scale_SI:
-      human_print_options |= human_autoscale | human_SI;
-      break;
-    case scale_IEC:
-      human_print_options |= human_autoscale | human_base_1024 | human_SI ;
-      break;
-
-    case scale_auto:
-      /* should never happen. assert? */
-
-    case scale_none:
-      break;
-    }
-
   if (grouping)
     {
       if (scale_to!=scale_none)
         error (EXIT_FAILURE,0,_("--grouping cannot be combined with --to"));
-      human_print_options |= human_group_digits;
       if (debug && (strlen (nl_langinfo (THOUSEP))==0))
             error (0,0,_("--grouping has not effect in this locale"));
     }
