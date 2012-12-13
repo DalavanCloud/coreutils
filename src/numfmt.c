@@ -682,15 +682,15 @@ Numbers can be processed either from stdin or command arguments.\n\
   --suffix=SUFFIX add SUFFIX to output numbers, and accept optional SUFFIX\n\
                   in input numbers.\n\
   --padding=N     pad the output to N characters.\n\
-                  Default is right-aligned. Negative N will left-align.\n\
-                  Note: if N is too small, the output will be truncated,\n\
-                  and a warning will be printed to stderr.\n\
+                  Positive N will right-aligned. Negative N will left-align.\n\
+                  Note: if the output is wider than N, padding is ignored.\n\
+                  Default is to automatically pad if whitespace is found.\n\
   --grouping      group digits together (e.g. 1,000,000).\n\
                   Uses the locale-defined grouping (i.e. have no effect\n\
                   in C/POSIX locales).\n\
   --field N       replace the number in input field N (default is 1)\n\
   -d, --delimiter=X  use X instead of whitespace for field delimiter\n\
-  --debug         print warning about possible errors.\n\
+  --debug         print warnings about invalid input.\n\
   \n\
 "), stdout);
       fputs (HELP_OPTION_DESCRIPTION, stdout);
@@ -706,11 +706,11 @@ UNIT options:\n\
       1Ki = 1024\n\
       1G  = 1000000\n\
       1Gi = 1048576\n\
- SI:\n\
+ si:\n\
       1K = 1000\n\
       1G  = 1000000\n\
       ...\n\
- IEC:\n\
+ iec:\n\
       1K = 1024\n\
       1G = 1048576\n\
       ...\n\
@@ -720,10 +720,14 @@ UNIT options:\n\
       printf (_("\
 \n\
 Examples:\n\
-  %s --to=SI 1000           -> \"1K\"\n\
-  echo 1K | %s --from=SI    -> \"1000\"\n\
-  echo 1K | %s --from=IEC   -> \"1024\"\n\
+  %s --to=si 1000           -> \"1K\"\n\
+  echo 1K | %s --from=si    -> \"1000\"\n\
+  echo 1K | %s --from=iec   -> \"1024\"\n\
+  df | %s --header --field 2 --to=si\n\
+  ls -l | %s --header --field 5 --to=iec\n\
+  ls -lh | %s --header --field 5 --from=iec --padding=10\n\
 "),
+              program_name, program_name, program_name,
               program_name, program_name, program_name);
       emit_ancillary_info ();
     }
