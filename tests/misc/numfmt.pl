@@ -128,10 +128,8 @@ my @Tests =
      ['pad-4', '--padding=10 --to=si 50000',             {OUT=>'       50K'}],
      ['pad-5', '--padding=-10 --to=si 50000',            {OUT=>'50K       '}],
 
-     # padding causing truncation, data loss
-     ['pad-6', '--padding=2 --to=si 1000', {OUT=>'1.'},
-             {ERR => "$prog: value '1.0K' truncated due to padding, " .
-                "possible data loss\n"}],
+     # padding too narrow
+     ['pad-6', '--padding=2 --to=si 1000', {OUT=>'1.0K'}],
 
 
      # Padding + suffix
@@ -176,6 +174,17 @@ my @Tests =
              {OUT=>"Hello World"},
              {ERR=>"$prog: input line is too short, no numbers found " .
                    "to convert in field 3\n"}],
+
+     # Auto-consume white-space, setup auto-padding
+     ['whitespace-1', '--to=si --field 2 "A    500 B"', {OUT=>"A    500 B"}],
+     ['whitespace-2', '--to=si --field 2 "A   5000 B"', {OUT=>"A   5.0K B"}],
+     ['whitespace-3', '--to=si "  500"', {OUT=>"  500"}],
+     ['whitespace-4', '--to=si " 6500"', {OUT=>" 6.5K"}],
+     # NOTE: auto-padding is not enabled if the value is on the first
+     #       field and there's no white-space before it.
+     ['whitespace-5', '--to=si "6000000"', {OUT=>"6.0M"}],
+     # but if there is whitespace, assume auto-padding is desired.
+     ['whitespace-6', '--to=si " 6000000"', {OUT=>"    6.0M"}],
 
 
      # Corner-cases:

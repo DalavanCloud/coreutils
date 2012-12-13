@@ -136,7 +136,9 @@ static uintmax_t to_unit_size=1;
 static int human_print_options=0; /* see enum in 'human.c' */
 static int grouping=0;
 static char *padding_buffer=NULL;
+static size_t padding_buffer_size=0;
 static long int padding_width=0;
+static int auto_padding=0; /* auto-pad each line based on skipped whitespace*/
 static mbs_align_t padding_alignment=MBS_ALIGN_RIGHT;
 static long int field=1;
 static int delimiter = DELIMITER_DEFAULT;
@@ -641,6 +643,18 @@ string_to_integer (const char *n_string)
 }
 
 
+static void
+setup_padding_buffer ( size_t min_size )
+{
+  if (padding_buffer_size > min_size)
+    return ;
+
+  padding_buffer_size = min_size+1;
+  padding_buffer = realloc (padding_buffer, padding_buffer_size);
+  if (!padding_buffer)
+    error (EXIT_FAILURE,0, _("out of memory (requested %ld bytes)"),
+           padding_width+1);
+}
 
 void
 usage (int status)
@@ -788,10 +802,10 @@ print_number (const long double val)
     fprintf (stderr,"Formatting output:\n  value: %Lf\n  humanized: '%s'\n",
             val,s);
 
-  if (padding_width)
+  if (padding_width && strlen (s)<padding_width)
     {
       size_t w = padding_width;
-      mbsalign (s,padding_buffer,padding_width+1,&w,
+      mbsalign (s,padding_buffer,padding_buffer_size,&w,
                padding_alignment,  MBA_UNIBYTE_ONLY );
       if (strlen (padding_buffer)<strlen (s))
         error (0,0,_("value '%s' truncated due to padding, possible data loss"),
@@ -833,10 +847,33 @@ process_suffixed_number (char* text)
         }
     }
 
+  /* Skip white space - always*/
+  char *p = text;
+  while ( *p && isblank (*p) )
+    ++p;
+  const unsigned int skip_count = text-p;
+
+  /* setup auto-padding */
+  if (auto_padding)
+    {
+      if (skip_count>0 || field>1)
+        {
+          padding_width = strlen (text);
+          setup_padding_buffer (padding_width);
+        }
+      else
+       {
+         padding_width = 0;
+       }
+      if (dev_debug)
+        fprintf (stderr, "Setting Auto-Padding to %ld characters\n",
+                padding_width);
+    }
+
   long double val=0;
-  enum simple_strtod_error e = parse_human_number (text,&val);
+  enum simple_strtod_error e = parse_human_number (p,&val);
   if (e==SSE_OK_PRECISION_LOSS && debug)
-    error (0,0,_("large input value '%s': possible precision loss"),text);
+    error (0,0,_("large input value '%s': possible precision loss"),p);
 
   if (from_unit_size!=1 || to_unit_size != 1)
           val = (val * from_unit_size) / to_unit_size;
@@ -1024,10 +1061,7 @@ main (int argc, char **argv)
               padding_alignment = MBS_ALIGN_LEFT;
               padding_width = -padding_width;
             }
-          padding_buffer = malloc (padding_width+1);
-          if (!padding_buffer)
-            error (EXIT_FAILURE,0, _("out of memory (requested %ld bytes)"),
-                    padding_width+1);
+          setup_padding_buffer (padding_width);
           break;
 
         case FIELD_OPTION:
@@ -1075,6 +1109,8 @@ main (int argc, char **argv)
           usage (EXIT_FAILURE);
         }
     }
+
+  auto_padding = (padding_width==0 && delimiter==DELIMITER_DEFAULT);
 
   switch (_round)
     {
