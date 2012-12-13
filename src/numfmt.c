@@ -167,8 +167,7 @@ suffix_power ( const char suf )
 {
   switch (suf)
     {
-    case 'k': /* special case: lower case 'k' is acceptable */
-    case 'K': /* kilo/kibi */
+    case 'K': /* kilo or kibi*/
       return 1;
 
     case 'M': /* mega or mebi */
@@ -240,7 +239,10 @@ powerld (long double base, unsigned int x)
 {
   long double result=base;
   if (x==0)
-    return 1;
+    return 1; /* note for test coverage: this is never reached,
+                 as 'powerld' won't be called if there's no suffix,
+                 hence, no "power" */
+
   /* TODO: check for overflow, inf? */
   while (--x)
     result *= base;
@@ -306,7 +308,7 @@ simple_round (long double val, enum round_type t)
       return simple_round_nearest (val);
 
     default:
-      abort ();
+      abort(); /* to silence to compiler - this should never happen */
     }
 }
 
@@ -506,7 +508,7 @@ simple_strtod_fatal (enum simple_strtod_error err,
     {
     case SSE_OK_PRECISION_LOSS:
     case SSE_OK:
-      abort ();
+      abort (); /* should never happen - this function isn't called when OK */
 
     case SSE_OVERFLOW:
       msgid = N_("value too large to be converted: '%s'");
@@ -622,21 +624,14 @@ static uintmax_t
 string_to_integer (const char *n_string)
 {
   strtol_error s_err;
+  char* ptr=NULL;
   uintmax_t n;
 
-  s_err = xstrtoumax (n_string, NULL, 10, &n, "bkKmMGTPEZY0");
+  s_err = xstrtoumax (n_string, &ptr, 10, &n, "KMGTPEZY");
 
-  if (s_err == LONGINT_OVERFLOW)
-    {
-      error (EXIT_FAILURE, 0,
-             _("%s: unit size is so large that it is not representable"),
-                n_string);
-    }
+  if (s_err != LONGINT_OK || *ptr!='\0')
+      error (EXIT_FAILURE, 0, _("invalid unit size: '%s'"), n_string);
 
-  if (s_err != LONGINT_OK)
-    {
-      error (EXIT_FAILURE, 0, _("%s: invalid unit size"), n_string);
-    }
   return n;
 }
 
@@ -650,8 +645,8 @@ setup_padding_buffer ( size_t min_size )
   padding_buffer_size = min_size+1;
   padding_buffer = realloc (padding_buffer, padding_buffer_size);
   if (!padding_buffer)
-    error (EXIT_FAILURE,0, _("out of memory (requested %ld bytes)"),
-           padding_width+1);
+    error (EXIT_FAILURE,0, _("out of memory (requested %zu bytes)"),
+           padding_buffer_size);
 }
 
 void
@@ -811,9 +806,6 @@ print_number (const long double val)
       size_t w = padding_width;
       mbsalign (s,padding_buffer,padding_buffer_size,&w,
                padding_alignment,  MBA_UNIBYTE_ONLY );
-      if (strlen (padding_buffer)<strlen (s))
-        error (0,0,_("value '%s' truncated due to padding, possible data loss"),
-              s);
 
       if (dev_debug)
         fprintf (stderr,"  After padding: '%s'\n", padding_buffer);
@@ -1121,7 +1113,7 @@ main (int argc, char **argv)
       if (scale_to!=scale_none)
         error (EXIT_FAILURE,0,_("--grouping cannot be combined with --to"));
       if (debug && (strlen (nl_langinfo (THOUSEP))==0))
-            error (0,0,_("--grouping has not effect in this locale"));
+            error (0,0,_("--grouping has no effect in this locale"));
     }
 
   /* Warn about no-op */

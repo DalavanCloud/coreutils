@@ -63,9 +63,19 @@ my @Tests =
 
      ['unit-1', '--from-unit=512 4',   {OUT => "2048"}],
      ['unit-2', '--to-unit=512 2048',   {OUT => "4"}],
-
      ['unit-3', '--from-unit=512 --from=si 4M',   {OUT => "2048000000"}],
      ['unit-4', '--from-unit=512 --from=iec --to=iec 4M',   {OUT => "2.0G"}],
+     ['unit-5', '--from-unit=AA --from=iec --to=iec 4M',
+             {ERR => "$prog: invalid unit size: 'AA'\n"},
+             {EXIT => '1'}],
+     ['unit-6', '--from-unit=54W --from=iec --to=iec 4M',
+             {ERR => "$prog: invalid unit size: '54W'\n"},
+             {EXIT => '1'}],
+     # Not fully documented.. "--{from,to}-unit" can accept IEC suffixes
+     ['unit-7', '--from-unit=2K --to=iec 30', {OUT=>"60K"}],
+     ['unit-8', '--from-unit=1234567890123456789012345 --to=iec 30',
+             {ERR => "$prog: invalid unit size: '1234567890123456789012345'\n"},
+             {EXIT => '1'}],
 
      # Test Suffix logic
      ['suf-1', '4000',    {OUT=>'4000'}],
@@ -125,6 +135,9 @@ my @Tests =
      ['pad-3', '--padding=A 5',
              {ERR => "$prog: invalid padding value 'A'\n"},
              {EXIT => '1'}],
+     ['pad-3.1', '--padding=0 5',
+             {ERR => "$prog: invalid padding value '0'\n"},
+             {EXIT => '1'}],
      ['pad-4', '--padding=10 --to=si 50000',             {OUT=>'       50K'}],
      ['pad-5', '--padding=-10 --to=si 50000',            {OUT=>'50K       '}],
 
@@ -146,10 +159,15 @@ my @Tests =
              {EXIT => '1'}],
      ['delim-3', '--delimiter=" " --from=auto "40M Foo"',{OUT=>'40000000 Foo'}],
      ['delim-4', '--delimiter=: --from=auto 40M:60M',  {OUT=>'40000000:60M'}],
+     ['delim-5', '--delimiter=: --field 3 --from=auto 40M:60M',
+	     {OUT=>'40M:60M'}],
 
      #Fields
      ['field-1', '--field A',
              {ERR => "$prog: invalid field value 'A'\n"},
+             {EXIT => '1'}],
+     ['field-1.1', '--field -5',
+             {ERR => "$prog: invalid field value '-5'\n"},
              {EXIT => '1'}],
      ['field-2', '--field 2 --from=auto "Hello 40M World 90G"',
              {OUT=>'Hello 40000000 World 90G'}],
@@ -185,6 +203,21 @@ my @Tests =
      ['whitespace-5', '--to=si "6000000"', {OUT=>"6.0M"}],
      # but if there is whitespace, assume auto-padding is desired.
      ['whitespace-6', '--to=si " 6000000"', {OUT=>"    6.0M"}],
+
+     # auto-padding - lines have same padding-width
+     #  (padding_buffer will be alloc'd just once)
+     ['whitespace-7', '--to=si --field 2',
+	     {IN_PIPE=>"rootfs    100000\n" .
+		       "udevxx   2000000\n"},
+	     {OUT    =>"rootfs      100K\n" .
+		       "udevxx      2.0M"}],
+     # auto-padding - second line requires a
+     # larger padding (padding-buffer needs to be realloc'd)
+     ['whitespace-8', '--to=si --field 2',
+	     {IN_PIPE=>"rootfs    100000\n" .
+		       "udev         20000000\n"},
+	     {OUT    =>"rootfs      100K\n" .
+		       "udev              20M"}],
 
 
      # Corner-cases:
@@ -254,6 +287,14 @@ my @Tests =
      ['header-7', '--debug --header=3 --to=iec',
              {IN_PIPE=>"hello\nworld\nsize\n5000\n90000\n"},
              {OUT=>"hello\nworld\nsize\n4.9K\n88K"}],
+     # header, but no actual content
+     ['header-8', '--header=2 --to=iec',
+             {IN_PIPE=>"hello\nworld\n"},
+             {OUT=>"hello\nworld"}],
+     # not enough header lines
+     ['header-9', '--header=3 --to=iec',
+             {IN_PIPE=>"hello\nworld\n"},
+             {OUT=>"hello\nworld"}],
 
 
      ## human_strtod testing
@@ -500,6 +541,61 @@ my @Tests =
                      "(cannot handle values > 999Y)\n"},
              {EXIT => 1}],
 
+     # debug warnings
+     ['debug-1', '--debug 4096', {OUT=>"4096"},
+             {ERR=>"$prog: no conversion option specified\n"}],
+     # '--padding' is a valid conversion option - no warning should be printed
+     ['debug-1.1', '--debug --padding 10 4096', {OUT=>"      4096"}],
+     ['debug-2', '--debug --grouping --from=si 4.0K', {OUT=>"4000"},
+             {ERR=>"$prog: --grouping has no effect in this locale\n"}],
+     ['debug-3', '--debug --field 4 --to=si "A B C"', {OUT=>"A B C"},
+             {ERR => "$prog: input line is too short, " .
+                     "no numbers found to convert in field 4\n"}],
+     ['debug-4', '--to=si --debug 12345678901234567890',
+	     {OUT=>"13E"},
+             {ERR=>"$prog: large input value '12345678901234567890':" .
+	           " possible precision loss\n"}],
+     ['debug-5', '--to=si --from=si --debug 1.12345678901234567890Y',
+	     {OUT=>"1.2Y"},
+             {ERR=>"$prog: large input value '1.12345678901234567890Y':" .
+	           " possible precision loss\n"}],
+
+     # dev-debug messages - the actual messages don't matter
+     # just ensure the program works, and for code coverage testing.
+     ['devdebug-1', '--devdebug --from=si 4.9K', {OUT=>"4900"},
+             {ERR=>""},
+             {ERR_SUBST=>"s/.*//msg"}],
+     ['devdebug-2', '--devdebug 4900', {OUT=>"4900"},
+             {ERR=>""},
+             {ERR_SUBST=>"s/.*//msg"}],
+     ['devdebug-3', '--devdebug --from=auto 4Mi', {OUT=>"4194304"},
+             {ERR=>""},
+             {ERR_SUBST=>"s/.*//msg"}],
+     ['devdebug-4', '--devdebug --to=si 4000000', {OUT=>"4.0M"},
+             {ERR=>""},
+             {ERR_SUBST=>"s/.*//msg"}],
+     ['devdebug-5', '--devdebug --to=si --padding=5 4000000', {OUT=>" 4.0M"},
+             {ERR=>""},
+             {ERR_SUBST=>"s/.*//msg"}],
+     ['devdebug-6', '--devdebug --suffix=Foo 1234Foo', {OUT=>"1234Foo"},
+             {ERR=>""},
+             {ERR_SUBST=>"s/.*//msg"}],
+     ['devdebug-7', '--devdebug --suffix=Foo 1234', {OUT=>"1234Foo"},
+             {ERR=>""},
+             {ERR_SUBST=>"s/.*//msg"}],
+     ['devdebug-8', '--devdebug --field 4 --to=si "A B C"', {OUT=>"A B C"},
+             {ERR=>""},
+             {ERR_SUBST=>"s/.*//msg"}],
+     ['devdebug-9', '--devdebug --grouping 10000', {OUT=>"10000"},
+             {ERR=>""},
+             {ERR_SUBST=>"s/.*//msg"}],
+
+     # Invalid parameters
+     ['help-1', '--foobar',
+	     {ERR=>"$prog: unrecognized option '--foobar'\n" .
+		   "Try '$prog --help' for more information.\n"},
+	     {EXIT=>1}],
+
     );
 
 my @Locale_Tests =
@@ -510,6 +606,10 @@ my @Locale_Tests =
 
      # Locale with grouping
      ['lcl-grp-2', '--from=si --grouping 7M',   {OUT=>"7 000 000"},
+             {ENV=>"LC_ALL=$locale"}],
+
+     # Locale with grouping and debug - no debug warning message
+     ['lcl-grp-3', '--from=si --debug --grouping 7M',   {OUT=>"7 000 000"},
              {ENV=>"LC_ALL=$locale"}],
 
      # Input with locale'd decimal-point
