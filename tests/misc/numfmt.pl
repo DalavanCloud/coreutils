@@ -157,7 +157,7 @@ my @Tests =
              {OUT=>'Hello 40000000 World 90G'}],
      ['field-3', '--field 3 --from=auto "Hello 40M World 90G"',
              {OUT=>"Hello 40M "},
-             {ERR=>"$prog: no digits found: 'World'\n"},
+             {ERR=>"$prog: invalid number: 'World'\n"},
              {EXIT => 1},],
      # Last field - no text after number
      ['field-4', '--field 4 --from=auto "Hello 40M World 90G"',
@@ -251,10 +251,10 @@ my @Tests =
 
      # NO_DIGITS_FOUND
      ['strtod-1', '--from=si "foo"',
-             {ERR=>"$prog: no digits found: 'foo'\n"},
+             {ERR=>"$prog: invalid number: 'foo'\n"},
              {EXIT=> 1}],
      ['strtod-2', '--from=si ""',
-             {ERR=>"$prog: no digits found: ''\n"},
+             {ERR=>"$prog: invalid number: ''\n"},
              {EXIT=> 1}],
 
      # INTEGRAL_OVERFLOW
@@ -274,21 +274,21 @@ my @Tests =
 
      # FRACTION_NO_DIGITS_FOUND
      ['strtod-5', '--from=si 12.',
-             {ERR=>"$prog: no digits in fraction: '12.'\n"},
+             {ERR=>"$prog: invalid number: '12.'\n"},
              {EXIT=>1}],
      ['strtod-6', '--from=si 12.K',
-             {ERR=>"$prog: no digits in fraction: '12.K'\n"},
+             {ERR=>"$prog: invalid number: '12.K'\n"},
              {EXIT=>1}],
 
      # whitespace is not allowed after decimal-point
      ['strtod-6.1', '--from=si --delimiter=, "12.  2"',
-             {ERR=>"$prog: no digits in fraction: '12.  2'\n"},
+             {ERR=>"$prog: invalid number: '12.  2'\n"},
              {EXIT=>1}],
 
      # FRACTION_OVERFLOW
      ['strtod-7', '--from=si "12.1234567890123456789012345678901234567890'.
                   '1234567890123456789012345678901234567890"',
-             {ERR=>"$prog: fraction value too large to be converted: '" .
+             {ERR=>"$prog: value too large to be converted: '" .
                      "12.1234567890123456789012345678901234567890" .
                      "1234567890123456789012345678901234567890'\n",
                      },

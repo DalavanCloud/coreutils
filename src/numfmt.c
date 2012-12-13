@@ -141,6 +141,10 @@ static int debug=0;
 /* debugging for developers - to be removed in final version? */
 static int dev_debug=0;
 
+/* will be set according to the current locale */
+static const char *decimal_point;
+static int decimal_point_length;
+
 static inline int
 valid_suffix ( const char suf )
 {
@@ -296,118 +300,159 @@ simple_round (long double val, enum round_type t)
     }
 }
 
-
-enum human_strtod_error
+/* This function reads an *integer* string,
+ * but returns the integer value in a 'long double'
+ * hence, no 2^64 limitation.
+ * other limitations: no locale'd grouping, no skipping white-space
+ *
+ *      999,000,000,000,000,000,000,000
+ *         Y   Z   E   P   T   G   K
+ *
+ * Returns:
+ *    SSE_OK - valid number.
+ *    SSE_OK_PRECISION_LOSS - if more than 18 digits were used.
+ *    SSE_OVERFLOW          - if more than 24 digits (999Y) were used.
+ *    SSE_INVALID_NUMBER    - if no digits were found.
+ */
+enum simple_strtod_error
 {
-  OK=0,
-  NO_DIGITS_FOUND,
-  INTEGRAL_OVERFLOW,
-  INVALID_NUMBER,
-  FRACTION_FORBIDDEN_WITHOUT_SCALING,
-  FRACTION_NO_DIGITS_FOUND,
-  FRACTION_OVERFLOW,
-  FRACTION_INVALID_NUMBER,
-  FRACTION_REQUIRES_SUFFIX,
-  VALID_BUT_FORBIDDEN_SUFFIX,
-  INVALID_SUFFIX,
+  SSE_OK=0,
+  SSE_OK_PRECISION_LOSS,
+  SSE_OVERFLOW,
+  SSE_INVALID_NUMBER,
 
+  /* the following are returned by 'simple_strtod_human' */
+  SSE_FRACTION_FORBIDDEN_WITHOUT_SCALING,
+  SSE_FRACTION_REQUIRES_SUFFIX,
+  SSE_VALID_BUT_FORBIDDEN_SUFFIX,
+  SSE_INVALID_SUFFIX
 };
 
-static enum human_strtod_error
-human_strtod (const char *input_str,
+static enum simple_strtod_error
+simple_strtod_int (const char *input_str,
+                   char* /*output*/ *ptr, /*required, unlike in stdtod */
+                   long double /*output*/ *value)
+{
+  enum simple_strtod_error e = SSE_OK;
+
+  long double val=0;
+  unsigned int digits=0;
+  *ptr = (char*)input_str;
+  while ( (*ptr) && isdigit ((**ptr)) )
+    {
+      int digit = (**ptr) - '0';
+      if (digit<0 || digit>9)
+        return SSE_INVALID_NUMBER; /* can this happen in some strange locale? */
+
+      if (digits>18)
+        e = SSE_OK_PRECISION_LOSS;
+      if (digits>24)
+        return SSE_OVERFLOW;
+
+      val *= 10;
+      val += digit;
+
+      ++digits;
+      ++(*ptr);
+    }
+  if (digits==0)
+    return SSE_INVALID_NUMBER;
+  if (value)
+    *value = val;
+
+  return e;
+}
+
+/*
+ * Accepts a floating-point value, represented as "NNNN[.NNNNN]" .
+ */
+static enum simple_strtod_error
+simple_strtod_float (const char *input_str,
+                   char* /*output*/ *ptr, /*required, unlike in stdtod */
+                   long double /*output*/ *value,
+                   int /*output*/ *have_fractions)
+{
+  enum simple_strtod_error e = SSE_OK;
+
+  *have_fractions = 0 ;
+
+  /* TODO: accept locale'd grouped values for the integral part */
+  e = simple_strtod_int (input_str, ptr, value);
+  if (e!=SSE_OK && e!=SSE_OK_PRECISION_LOSS)
+    return e;
+
+  /* optional decimal point + fraction */
+  if (STREQ_LEN (*ptr,decimal_point,decimal_point_length))
+    {
+      char *ptr2;
+      long double val_frac=0;
+
+      (*ptr) += decimal_point_length;
+      enum simple_strtod_error e2 = simple_strtod_int (*ptr,&ptr2,&val_frac);
+      if (e2!=SSE_OK && e!=SSE_OK_PRECISION_LOSS)
+        return e2;
+      if (e2==SSE_OK_PRECISION_LOSS)
+        e = e2 ; /* propegate warning */
+
+      int exponent = ptr2-*ptr; /* number of digits in the fractions */
+      val_frac = ((long double)val_frac)/powerld (10,exponent);
+
+      *value += val_frac;
+
+      *have_fractions = 1 ;
+
+      *ptr=ptr2;
+    }
+  return e;
+}
+
+static enum simple_strtod_error
+simple_strtod_human (const char *input_str,
               char* /*output*/ *ptr, /*required, unlike in stdtod */
               long double /*output*/ *value, /* required */
               enum scale_type allowed_scaling)
 {
-  char *pi, *pf;
-  uintmax_t integral,fraction=0;
   int have_fractions=0;
   int power=0;
   /* 'scale_auto' is checked below */
   int scale_base=(allowed_scaling==scale_IEC)?1024:1000;
-  const int base = 10 ;
-
-  const char *decimal_point = nl_langinfo (RADIXCHAR);
-  if (decimal_point==NULL || strlen (decimal_point)==0)
-    decimal_point = ".";
-  const int decimal_point_length=strlen (decimal_point);
 
   if (dev_debug)
-    fprintf (stderr,"string-to-double:\n  input string: '%s'\n  " \
+    fprintf (stderr,"simple_stdtod_human:\n  input string: '%s'\n  " \
             "locale decimal-point: '%s'\n", input_str,decimal_point);
 
-  errno = 0;
-  /* TODO: accept locale'd grouped values for the integral part */
-  integral = strtoumax (input_str, &pi, base);
-  if (pi==input_str)
-    return NO_DIGITS_FOUND;
-  if (errno==ERANGE)
-    return INTEGRAL_OVERFLOW;
-  if (errno!=0)
-    return INVALID_NUMBER; /* should never happen? */
-
-  *value = integral;
-
-  *ptr = pi;
+  enum simple_strtod_error e =
+        simple_strtod_float (input_str, ptr, value,&have_fractions );
+  if (e!=SSE_OK && e!=SSE_OK_PRECISION_LOSS)
+    return e;
 
   if (dev_debug)
-    fprintf (stderr,"  integral-part: %lu\n", integral);
+    fprintf (stderr,"  parsed numeric value: %Lf\n" \
+                    "  have_fractions = %d\n", *value, have_fractions);
 
-  /* optional decimal point + fraction */
-  if (STREQ_LEN (pi,decimal_point,decimal_point_length))
-    {
-      if (allowed_scaling==scale_none)
-        return FRACTION_FORBIDDEN_WITHOUT_SCALING;
+  if (have_fractions && allowed_scaling==scale_none)
+        return SSE_FRACTION_FORBIDDEN_WITHOUT_SCALING;
 
-      errno = 0 ;
-      pi += decimal_point_length;
-      if (!isdigit (*pi))
-        return FRACTION_NO_DIGITS_FOUND;
-      fraction = strtoumax (pi, &pf, base);
-      if (pf==pi)
-        return FRACTION_NO_DIGITS_FOUND;
-      if (errno==ERANGE)
-        return FRACTION_OVERFLOW;
-      if (errno!=0)
-        return FRACTION_INVALID_NUMBER;
-
-      int exponent = pf-pi;
-      long double f = ((long double)fraction)/powerld (10,exponent);
-
-      have_fractions=1;
-
-      if (dev_debug)
-        fprintf (stderr,"  fraction-part: %lu (exponent=%d)\n" \
-                       "  fraction-value: %Lf\n",
-              fraction,exponent,f);
-
-      *value += f;
-
-      if (dev_debug)
-        fprintf (stderr,"  combined-value: %Lf\n", *value);
-
-      *ptr= pf;
-    }
 
   /* no suffix / trailing characters */
   if (**ptr=='\0')
     {
       if (have_fractions)
-        return FRACTION_REQUIRES_SUFFIX;
+        return SSE_FRACTION_REQUIRES_SUFFIX;
 
       if (dev_debug)
         fprintf (stderr,"  no fraction,suffix detected\n" \
-                       "  returning value: %Lf\n", *value);
+                       "  returning value: %Lf (%LG)\n", *value, *value);
 
-      return OK;
+      return SSE_OK;
     }
 
   /* process suffix */
   if (!valid_suffix (**ptr))
-    return INVALID_SUFFIX;
+    return SSE_INVALID_SUFFIX;
 
   if (allowed_scaling==scale_none)
-    return VALID_BUT_FORBIDDEN_SUFFIX;
+    return SSE_VALID_BUT_FORBIDDEN_SUFFIX;
 
   power = suffix_power (**ptr);
   (*ptr)++; /* skip first suffix character */
@@ -429,64 +474,50 @@ human_strtod (const char *input_str,
     fprintf (stderr, "  suffix power=%d^%d = %Lf\n",
           scale_base,power,multiplier);
 
+  /* TODO: detect loss of precision and overflows */
   (*value) = (*value) * multiplier;
 
   if (dev_debug)
-    fprintf (stderr, "  returning value: %Lf\n", *value);
+    fprintf (stderr,"  returning value: %Lf (%LG)\n", *value, *value);
 
-  return OK;
+  return SSE_OK;
 }
 
 
 static void
-human_strtod_fatal (enum human_strtod_error err,
+simple_strtod_fatal (enum simple_strtod_error err,
                      char const *input_str)
 {
-  char const *msgid;
+  char const *msgid=NULL;
 
   switch (err)
     {
-    default:
+    case SSE_OK_PRECISION_LOSS:
+    case SSE_OK:
       abort ();
 
-    case NO_DIGITS_FOUND:
-      msgid = N_("no digits found: '%s'");
-      break;
-
-    case INTEGRAL_OVERFLOW:
+    case SSE_OVERFLOW:
       msgid = N_("value too large to be converted: '%s'");
       break;
 
-    case INVALID_NUMBER:
+    case SSE_INVALID_NUMBER:
       msgid = N_("invalid number: '%s'");
       break;
 
-    case FRACTION_FORBIDDEN_WITHOUT_SCALING:
+    case SSE_FRACTION_FORBIDDEN_WITHOUT_SCALING:
       msgid = N_("cannot process decimal-point value without scaling: '%s'" \
                  " (consider using --from)");
       break;
 
-    case FRACTION_NO_DIGITS_FOUND:
-      msgid = N_("no digits in fraction: '%s'");
-      break;
-
-    case FRACTION_OVERFLOW:
-      msgid = N_("fraction value too large to be converted: '%s'");
-      break;
-
-    case FRACTION_INVALID_NUMBER:
-      msgid = N_("invalid fraction number: '%s'");
-      break;
-
-    case FRACTION_REQUIRES_SUFFIX:
+    case SSE_FRACTION_REQUIRES_SUFFIX:
       msgid = N_("decimal-point values require a suffix (e.g. K/M/G/T): '%s'");
       break;
 
-    case VALID_BUT_FORBIDDEN_SUFFIX:
+    case SSE_VALID_BUT_FORBIDDEN_SUFFIX:
       msgid = N_("rejecting suffix in input: '%s' (consider using --from)");
       break;
 
-    case INVALID_SUFFIX:
+    case SSE_INVALID_SUFFIX:
       msgid = N_("invalid suffix in input: '%s'");
       break;
 
@@ -705,14 +736,15 @@ parse_number (const char* str)
   char *ptr=NULL;
 
   long double val=0;
-  enum human_strtod_error err = human_strtod (str, &ptr, &val, scale_from);
-  if (err != OK)
-    human_strtod_fatal (err,str);
+  enum simple_strtod_error e =
+    simple_strtod_human (str, &ptr, &val, scale_from);
+  if (e!= SSE_OK && e!=SSE_OK_PRECISION_LOSS)
+    simple_strtod_fatal (e,str);
 
   if (dev_debug)
     fprintf (stderr,"Parsing number:\n  input string: '%s'\n  " \
-            "remaining characters: '%s'\n  numeric value: %Lf\n",
-            str,ptr,val);
+            "remaining characters: '%s'\n  numeric value: %Lf (%LG)\n",
+            str,ptr,val,val);
 
   if ( ptr && *ptr!='\0' )
        error (EXIT_FAILURE,0,_("invalid suffix in input '%s': '%s'"),
@@ -919,6 +951,11 @@ main (int argc, char **argv)
   bindtextdomain (PACKAGE, LOCALEDIR);
   textdomain (PACKAGE);
 
+  decimal_point = nl_langinfo (RADIXCHAR);
+  if (decimal_point==NULL || strlen (decimal_point)==0)
+    decimal_point = ".";
+  decimal_point_length=strlen (decimal_point);
+
   atexit (close_stdout);
 
   while (true)
@@ -992,6 +1029,7 @@ main (int argc, char **argv)
 
         case DEV_DEBUG_OPTION:
           dev_debug=1;
+          debug=1;
           break;
 
         case HEADER_OPTION:
