@@ -224,10 +224,10 @@ my @Tests =
      ## Header testing
 
      # header - silently ignored with command line parameters
-     ['header-1', '--header --to=iec 4000', {OUT=>"4.0K"}],
+     ['header-1', '--header --to=iec 4096', {OUT=>"4.0K"}],
 
      # header warning with --debug
-     ['header-2', '--debug --header --to=iec 4000', {OUT=>"4.0K"},
+     ['header-2', '--debug --header --to=iec 4096', {OUT=>"4.0K"},
              {ERR=>"$prog: --header ignored with command-line input\n"}],
 
      ['header-3', '--header=A',
@@ -311,6 +311,80 @@ my @Tests =
                      "in input: '12M' (consider using --from)\n"},
              {EXIT=>1}],
 
+     #
+     # Test double_to_human()
+     #
+
+     # 1K and smaller
+     ['dbl-to-human-1','--to=si 800',  {OUT=>"800"}],
+     ['dbl-to-human-2','--to=si 0',  {OUT=>"0"}],
+     ['dbl-to-human-2.1','--to=si 999',  {OUT=>"999"}],
+     ['dbl-to-human-2.2','--to=si 1000',  {OUT=>"1.0K"}],
+     #NOTE: the following are consistent with "ls -lh" output
+     ['dbl-to-human-2.3','--to=iec 999',  {OUT=>"999"}],
+     ['dbl-to-human-2.4','--to=iec 1023',  {OUT=>"1023"}],
+     ['dbl-to-human-2.5','--to=iec 1024',  {OUT=>"1.0K"}],
+     ['dbl-to-human-2.6','--to=iec 1025',  {OUT=>"1.1K"}],
+
+     # values resulting in "N.Nx" output
+     ['dbl-to-human-3','--to=si 8000', {OUT=>"8.0K"}],
+     ['dbl-to-human-3.1','--to=si 8001', {OUT=>"8.1K"}],
+     ['dbl-to-human-4','--to=si --round=floor 8001', {OUT=>"8.0K"}],
+
+     ['dbl-to-human-5','--to=si --round=floor 3500', {OUT=>"3.5K"}],
+     ['dbl-to-human-6','--to=si --round=nearest 3500', {OUT=>"3.5K"}],
+     ['dbl-to-human-7','--to=si --round=ceiling 3500', {OUT=>"3.5K"}],
+
+     ['dbl-to-human-8','--to=si --round=floor    3501', {OUT=>"3.5K"}],
+     ['dbl-to-human-9','--to=si --round=nearest  3501', {OUT=>"3.5K"}],
+     ['dbl-to-human-10','--to=si --round=ceiling 3501', {OUT=>"3.6K"}],
+
+     ['dbl-to-human-11','--to=si --round=nearest  3550', {OUT=>"3.6K"}],
+     ['dbl-to-human-12','--to=si --from=si 999.89K', {OUT=>"1.0M"}],
+     ['dbl-to-human-13','--to=si --from=si 9.9K', {OUT=>"9.9K"}],
+     ['dbl-to-human-14','--to=si 9900', {OUT=>"9.9K"}],
+     ['dbl-to-human-15','--to=iec --from=si 3.3K', {OUT=>"3.3K"}],
+     ['dbl-to-human-16','--to=iec --round=floor --from=si 3.3K', {OUT=>"3.2K"}],
+
+     # values resulting in 'NNx' output
+     ['dbl-to-human-17','--to=si 9999', {OUT=>"10K"}],
+     ['dbl-to-human-18','--to=si --round=floor 35000', {OUT=>"35K"}],
+     ['dbl-to-human-19','--to=iec 35000', {OUT=>"35K"}],
+     ['dbl-to-human-20','--to=iec --round=floor 35000', {OUT=>"34K"}],
+     ['dbl-to-human-21','--to=iec 35000000', {OUT=>"34M"}],
+     ['dbl-to-human-22','--to=iec --round=floor 35000000', {OUT=>"33M"}],
+     ['dbl-to-human-23','--to=si  35000001', {OUT=>"36M"}],
+     ['dbl-to-human-24','--to=si --from=si  9.99M', {OUT=>"10M"}],
+     ['dbl-to-human-25','--to=si --from=iec 9.99M', {OUT=>"11M"}],
+     ['dbl-to-human-25.1','--to=iec 99999', {OUT=>"98K"}],
+
+     # values resulting in 'NNNx' output
+     ['dbl-to-human-26','--to=si 999000000000', {OUT=>"999G"}],
+     ['dbl-to-human-27','--to=iec 999000000000', {OUT=>"931G"}],
+     ['dbl-to-human-28','--to=si 123600000000000', {OUT=>"124T"}],
+     ['dbl-to-human-29','--to=si 998123', {OUT=>"999K"}],
+     ['dbl-to-human-30','--to=si --round=nearest 998123', {OUT=>"998K"}],
+     ['dbl-to-human-31','--to=si 99999', {OUT=>"100K"}],
+     ['dbl-to-human-32','--to=iec 102399', {OUT=>"100K"}],
+
+
+     # Large Values
+     ['large-1','1000000000000000', {OUT=>"1000000000000000"}],
+     ['large-2','1000000000000000000', {OUT=>"1000000000000000000"}],
+
+     #FIX ME: can't read numbers so big - strtoumax fails
+#     ['large-3','1000000000000000000000', {OUT=>"1000000000000000000000"}],
+
+     ['large-4','--to=si 1000000000000000000', {OUT=>"1.0E"}],
+     ['large-5','--from=si --to=si 2E', {OUT=>"2.0E"}],
+     ['large-6','--from=si --to=si 3.4Z', {OUT=>"3.4Z"}],
+     ['large-7','--from=si --to=si 80Y', {OUT=>"80Y"}],
+     ['large-8','--from=si --to=si 9000Z', {OUT=>"9.0Y"}],
+     ['large-9','--from=si 9.7Y', {OUT=>"9700000000000000000000000"}],
+
+     #FIXME: can't handle such big numbres
+#     ['large-10','--from=si 999Y', {OUT=>"9700000000000000000000000"}],
+
     );
 
 my @Locale_Tests =
@@ -325,6 +399,9 @@ my @Locale_Tests =
 
      # Input with locale'd decimal-point
      ['lcl-stdtod-1', '--from=si 12,2K', {OUT=>"12200"},
+             {ENV=>"LC_ALL=$locale"}],
+
+     ['lcl-dbl-to-human-1', '--to=si 1100', {OUT=>"1,1K"},
              {ENV=>"LC_ALL=$locale"}],
   );
 push @Tests, @Locale_Tests if $locale ne "C";

@@ -550,16 +550,18 @@ double_to_human (long double val,
       power++;
     }
   if (ten_or_less)
-    {
       val /= 10;
-      if (val>=10)
-        ten_or_less = 0 ;
-    }
+
+  /* should "7.0" be printed as "7" ?
+   * if removing the ".0" is preffered, enable the third condition */
+  int show_decimal_point = (val!=0) && (val<10) ;
+                                /* && (val>simple_round_floor (val)))*/
+
   if (dev_debug)
     fprintf (stderr,"  after rounding, value=%Lf * %0.f ^ %d\n",
              val, scale_base, power);
 
-  snprintf (buf,buf_size, (ten_or_less)?"%.1Lf%s":"%.0Lf%s",
+  snprintf (buf,buf_size, (show_decimal_point)?"%.1Lf%s":"%.0Lf%s",
            val,suffix_power_character (power));
 
 
