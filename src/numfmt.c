@@ -688,6 +688,8 @@ Numbers can be processed either from stdin or command arguments.\n\
   --grouping      group digits together (e.g. 1,000,000).\n\
                   Uses the locale-defined grouping (i.e. have no effect\n\
                   in C/POSIX locales).\n\
+  --header[=N]    print (without converting) the first N header lines.\n\
+                  N defaults to 1 if not specified.\n\
   --field N       replace the number in input field N (default is 1)\n\
   -d, --delimiter=X  use X instead of whitespace for field delimiter\n\
   --debug         print warnings about invalid input.\n\
