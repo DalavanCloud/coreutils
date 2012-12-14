@@ -160,7 +160,7 @@ my @Tests =
      ['delim-3', '--delimiter=" " --from=auto "40M Foo"',{OUT=>'40000000 Foo'}],
      ['delim-4', '--delimiter=: --from=auto 40M:60M',  {OUT=>'40000000:60M'}],
      ['delim-5', '--delimiter=: --field 3 --from=auto 40M:60M',
-	     {OUT=>'40M:60M'}],
+             {OUT=>'40M:60M'}],
 
      #Fields
      ['field-1', '--field A',
@@ -207,17 +207,17 @@ my @Tests =
      # auto-padding - lines have same padding-width
      #  (padding_buffer will be alloc'd just once)
      ['whitespace-7', '--to=si --field 2',
-	     {IN_PIPE=>"rootfs    100000\n" .
-		       "udevxx   2000000\n"},
-	     {OUT    =>"rootfs      100K\n" .
-		       "udevxx      2.0M"}],
+             {IN_PIPE=>"rootfs    100000\n" .
+                       "udevxx   2000000\n"},
+             {OUT    =>"rootfs      100K\n" .
+                       "udevxx      2.0M"}],
      # auto-padding - second line requires a
      # larger padding (padding-buffer needs to be realloc'd)
      ['whitespace-8', '--to=si --field 2',
-	     {IN_PIPE=>"rootfs    100000\n" .
-		       "udev         20000000\n"},
-	     {OUT    =>"rootfs      100K\n" .
-		       "udev              20M"}],
+             {IN_PIPE=>"rootfs    100000\n" .
+                       "udev         20000000\n"},
+             {OUT    =>"rootfs      100K\n" .
+                       "udev              20M"}],
 
 
      # Corner-cases:
@@ -552,13 +552,13 @@ my @Tests =
              {ERR => "$prog: input line is too short, " .
                      "no numbers found to convert in field 4\n"}],
      ['debug-4', '--to=si --debug 12345678901234567890',
-	     {OUT=>"13E"},
+             {OUT=>"13E"},
              {ERR=>"$prog: large input value '12345678901234567890':" .
-	           " possible precision loss\n"}],
+                   " possible precision loss\n"}],
      ['debug-5', '--to=si --from=si --debug 1.12345678901234567890Y',
-	     {OUT=>"1.2Y"},
+             {OUT=>"1.2Y"},
              {ERR=>"$prog: large input value '1.12345678901234567890Y':" .
-	           " possible precision loss\n"}],
+                   " possible precision loss\n"}],
 
      # dev-debug messages - the actual messages don't matter
      # just ensure the program works, and for code coverage testing.
@@ -592,9 +592,9 @@ my @Tests =
 
      # Invalid parameters
      ['help-1', '--foobar',
-	     {ERR=>"$prog: unrecognized option '--foobar'\n" .
-		   "Try '$prog --help' for more information.\n"},
-	     {EXIT=>1}],
+             {ERR=>"$prog: unrecognized option '--foobar'\n" .
+                   "Try '$prog --help' for more information.\n"},
+             {EXIT=>1}],
 
     );
 
@@ -620,6 +620,25 @@ my @Locale_Tests =
              {ENV=>"LC_ALL=$locale"}],
   );
 push @Tests, @Locale_Tests if $locale ne "C";
+
+## Check all valid/invalid suffixes
+foreach my $suf ( 'A' .. 'Z', 'a' .. 'z' ) {
+  if ( $suf =~ /^[KMGTPEZY]$/ )
+    {
+      push @Tests, ["auto-suf-si-$suf","--from=si --to=si 1$suf",
+              {OUT=>"1.0$suf"}];
+      push @Tests, ["auto-suf-iec-$suf","--from=iec --to=iec 1$suf",
+              {OUT=>"1.0$suf"}];
+      push @Tests, ["auto-suf-auto-$suf","--from=auto --to=iec 1${suf}i",
+              {OUT=>"1.0$suf"}];
+    }
+  else
+    {
+      push @Tests, ["auto-suf-si-$suf","--from=si --to=si 1$suf",
+              {ERR=>"$prog: invalid suffix in input: '1${suf}'\n"},
+              {EXIT=>1}];
+    }
+}
 
 # Prepend the command line argument and append a newline to end
 # of each expected 'OUT' string.
