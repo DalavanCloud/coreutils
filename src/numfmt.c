@@ -158,7 +158,7 @@ static int decimal_point_length;
 static inline int
 valid_suffix ( const char suf )
 {
-  static const char *valid_suffixes="kKMGTPEZY";
+  static const char *valid_suffixes="KMGTPEZY";
   return (strchr (valid_suffixes,suf)!=NULL);
 }
 
