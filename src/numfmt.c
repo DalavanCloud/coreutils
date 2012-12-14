@@ -293,7 +293,6 @@ simple_round_ceiling (long double val)
 }
 
 static inline int
-__attribute ((pure))
 simple_round (long double val, enum round_type t)
 {
   switch (t)
@@ -308,7 +307,7 @@ simple_round (long double val, enum round_type t)
       return simple_round_nearest (val);
 
     default:
-      abort(); /* to silence to compiler - this should never happen */
+      return 0; /* to silence to compiler - this shnuld never happen */
     }
 }
 
