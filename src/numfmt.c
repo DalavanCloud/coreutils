@@ -51,46 +51,48 @@ enum
 
 enum scale_type
 {
-scale_none, /* the default: no scaling */
-scale_auto, /* --from only */
-scale_SI,
-scale_IEC
+  scale_none,                   /* the default: no scaling */
+  scale_auto,                   /* --from only */
+  scale_SI,
+  scale_IEC
 };
 
 static char const *const scale_from_args[] =
 {
-"none", "auto", "si", "iec", NULL
+  "none", "auto", "si", "iec", NULL
 };
+
 static enum scale_type const scale_from_types[] =
 {
-scale_none, scale_auto, scale_SI, scale_IEC
+  scale_none, scale_auto, scale_SI, scale_IEC
 };
 
 static char const *const scale_to_args[] =
 {
-"none", "si", "iec", NULL
+  "none", "si", "iec", NULL
 };
+
 static enum scale_type const scale_to_types[] =
 {
-scale_none, scale_SI, scale_IEC
+  scale_none, scale_SI, scale_IEC
 };
 
 
 enum round_type
 {
-round_ceiling,
-round_floor,
-round_nearest
+  round_ceiling,
+  round_floor,
+  round_nearest
 };
 
 static char const *const round_args[] =
 {
-"ceiling","floor","nearest", NULL
+  "ceiling","floor","nearest", NULL
 };
 
 static enum round_type const round_types[] =
 {
-round_ceiling,round_floor,round_nearest
+  round_ceiling, round_floor, round_nearest
 };
 
 static struct option const longopts[] =
@@ -105,9 +107,9 @@ static struct option const longopts[] =
   {"grouping", no_argument, NULL, GROUPING_OPTION},
   {"delimiter", required_argument, NULL, 'd'},
   {"field", required_argument, NULL, FIELD_OPTION},
-  {"debug", no_argument,NULL,DEBUG_OPTION},
-  {"devdebug", no_argument,NULL,DEV_DEBUG_OPTION},
-  {"header", optional_argument,NULL,HEADER_OPTION},
+  {"debug", no_argument, NULL, DEBUG_OPTION},
+  {"devdebug", no_argument, NULL, DEV_DEBUG_OPTION},
+  {"header", optional_argument, NULL, HEADER_OPTION},
   {GETOPT_HELP_OPTION_DECL},
   {GETOPT_VERSION_OPTION_DECL},
   {NULL, 0, NULL, 0}
@@ -124,80 +126,82 @@ enum { MAX_UNSCALED_DIGITS = 18 };
  * This is equivalent to 999Y.
  * NOTE: 'long double' can handle more than that, but there's
  *       no official suffix assigned beyond Yotta (1000^8) */
-enum { MAX_ACCEPTABLE_DIGITS = 27 } ;
+enum { MAX_ACCEPTABLE_DIGITS = 27 };
 
-static enum scale_type scale_from=scale_none;
-static enum scale_type scale_to=scale_none;
-static enum round_type _round=round_ceiling;
+static enum scale_type scale_from = scale_none;
+static enum scale_type scale_to = scale_none;
+static enum round_type _round = round_ceiling;
 static const char *suffix = NULL;
-static uintmax_t from_unit_size=1;
-static uintmax_t to_unit_size=1;
-static int grouping=0;
-static char *padding_buffer=NULL;
-static size_t padding_buffer_size=0;
-static long int padding_width=0;
-static int auto_padding=0; /* auto-pad each line based on skipped whitespace*/
-static mbs_align_t padding_alignment=MBS_ALIGN_RIGHT;
-static long int field=1;
+static uintmax_t from_unit_size = 1;
+static uintmax_t to_unit_size = 1;
+static int grouping = 0;
+static char *padding_buffer = NULL;
+static size_t padding_buffer_size = 0;
+static long int padding_width = 0;
+
+/* auto-pad each line based on skipped whitespace */
+static int auto_padding = 0;
+static mbs_align_t padding_alignment = MBS_ALIGN_RIGHT;
+static long int field = 1;
 static int delimiter = DELIMITER_DEFAULT;
 
 /* if non-zero, the first 'header' lines from STDIN are skipped */
-static uintmax_t header=0;
+static uintmax_t header = 0;
 
 /* Debug for users: print warnings to STDERR about possible
    error (similar to sort's debug) */
-static int debug=0;
+static int debug = 0;
 
 /* debugging for developers - to be removed in final version? */
-static int dev_debug=0;
+static int dev_debug = 0;
 
 /* will be set according to the current locale */
 static const char *decimal_point;
 static int decimal_point_length;
 
 static inline int
-valid_suffix ( const char suf )
+valid_suffix (const char suf)
 {
-  static const char *valid_suffixes="KMGTPEZY";
-  return (strchr (valid_suffixes,suf)!=NULL);
+  static const char *valid_suffixes = "KMGTPEZY";
+  return (strchr (valid_suffixes, suf) != NULL);
 }
 
 static inline int
-suffix_power ( const char suf )
+suffix_power (const char suf)
 {
   switch (suf)
     {
-    case 'K': /* kilo or kibi*/
+    case 'K':                  /* kilo or kibi */
       return 1;
 
-    case 'M': /* mega or mebi */
+    case 'M':                  /* mega or mebi */
       return 2;
 
-    case 'G': /* giga or gibi */
+    case 'G':                  /* giga or gibi */
       return 3;
 
-    case 'T': /* tera or tebi */
+    case 'T':                  /* tera or tebi */
       return 4;
 
-    case 'P': /* peta or pebi */
+    case 'P':                  /* peta or pebi */
       return 5;
 
-    case 'E': /* exa or exbi */
+    case 'E':                  /* exa or exbi */
       return 6;
 
-    case 'Z': /* zetta or 2**70 */
+    case 'Z':                  /* zetta or 2**70 */
       return 7;
 
-    case 'Y': /* yotta or 2**80 */
+    case 'Y':                  /* yotta or 2**80 */
       return 8;
 
-    default: /* should never happen. assert? */
+    default:                   /* should never happen. assert? */
       return 0;
     }
 }
 
-static inline const char*
-suffix_power_character ( unsigned int power )
+static inline const char *
+suffix_power_character (unsigned int power)
 {
   switch (power)
     {
