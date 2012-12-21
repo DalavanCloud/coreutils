@@ -108,7 +108,7 @@ static struct option const longopts[] =
   {"delimiter", required_argument, NULL, 'd'},
   {"field", required_argument, NULL, FIELD_OPTION},
   {"debug", no_argument, NULL, DEBUG_OPTION},
-  {"devdebug", no_argument, NULL, DEV_DEBUG_OPTION},
+  {"-devdebug", no_argument, NULL, DEV_DEBUG_OPTION},
   {"header", optional_argument, NULL, HEADER_OPTION},
   {GETOPT_HELP_OPTION_DECL},
   {GETOPT_VERSION_OPTION_DECL},
