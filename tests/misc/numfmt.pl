@@ -36,6 +36,7 @@ my @Tests =
      ['3', '--from=iec 1K',    {OUT => "1024"}],
      ['4', '--from=auto 1K',   {OUT => "1000"}],
      ['5', '--from=auto 1Ki',  {OUT => "1024"}],
+     ['5.1', '--from=ieci 1Ki',  {OUT => "1024"}],
 
      ['6', {IN_PIPE => "1234"},            {OUT => "1234"}],
      ['7', '--from=si', {IN_PIPE => "2K"}, {OUT => "2000"}],
@@ -60,6 +61,7 @@ my @Tests =
      ['24', '--to=iec --round=floor   2040',   {OUT => "1.9K"}],
      ['25', '--to=iec --round=nearest 1996',   {OUT => "1.9K"}],
      ['26', '--to=iec --round=nearest 1997',   {OUT => "2.0K"}],
+     ['27', '--to=ieci 2048',                  {OUT => "2.0Ki"}],
 
      ['unit-1', '--from-unit=512 4',   {OUT => "2048"}],
      ['unit-2', '--to-unit=512 2048',   {OUT => "4"}],
@@ -361,6 +363,12 @@ my @Tests =
                      "in input: '12M' (consider using --from)\n"},
              {EXIT=>1}],
 
+     # MISSING_I_SUFFIX
+     ['strtod-11', '--from=ieci 12M',
+             {ERR => "$prog: missing 'i' suffix in input: " .
+                     "'12M' (e.g Ki/Mi/Gi)\n"},
+             {EXIT=>1}],
+
      #
      # Test double_to_human()
      #
@@ -416,6 +424,7 @@ my @Tests =
      ['dbl-to-human-30','--to=si --round=nearest 998123', {OUT=>"998K"}],
      ['dbl-to-human-31','--to=si 99999', {OUT=>"100K"}],
      ['dbl-to-human-32','--to=iec 102399', {OUT=>"100K"}],
+     ['dbl-to-human-33','--to=ieci 102399', {OUT=>"100Ki"}],
 
 
      # Large Values
@@ -631,6 +640,10 @@ foreach my $suf ( 'A' .. 'Z', 'a' .. 'z' ) {
               {OUT=>"1.0$suf"}];
       push @Tests, ["auto-suf-auto-$suf","--from=auto --to=iec 1${suf}i",
               {OUT=>"1.0$suf"}];
+      push @Tests, ["auto-suf-iec-to-ieci-$suf","--from=iec --to=ieci 1${suf}",
+              {OUT=>"1.0${suf}i"}];
+      push @Tests, ["auto-suf-ieci-to-iec-$suf","--from=ieci --to=iec 1${suf}i",
+              {OUT=>"1.0${suf}"}];
     }
   else
     {

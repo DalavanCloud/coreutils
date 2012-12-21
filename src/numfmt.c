@@ -54,27 +54,28 @@ enum scale_type
   scale_none,                   /* the default: no scaling */
   scale_auto,                   /* --from only */
   scale_SI,
-  scale_IEC
+  scale_IEC,
+  scale_IEC_I                   /* 'i' suffix is required */
 };
 
 static char const *const scale_from_args[] =
 {
-  "none", "auto", "si", "iec", NULL
+  "none", "auto", "si", "iec", "ieci", NULL
 };
 
 static enum scale_type const scale_from_types[] =
 {
-  scale_none, scale_auto, scale_SI, scale_IEC
+  scale_none, scale_auto, scale_SI, scale_IEC, scale_IEC_I
 };
 
 static char const *const scale_to_args[] =
 {
-  "none", "si", "iec", NULL
+  "none", "si", "iec", "ieci", NULL
 };
 
 static enum scale_type const scale_to_types[] =
 {
-  scale_none, scale_SI, scale_IEC
+  scale_none, scale_SI, scale_IEC, scale_IEC_I
 };
 
 
@@ -158,6 +159,23 @@ static int dev_debug = 0;
 /* will be set according to the current locale */
 static const char *decimal_point;
 static int decimal_point_length;
+
+static inline int
+default_scale_base (enum scale_type scale)
+{
+  switch (scale)
+    {
+    case scale_IEC:
+    case scale_IEC_I:
+      return 1024;
+
+    case scale_none:
+    case scale_auto:
+    case scale_SI:
+    default:
+      return 1000;
+    }
+}
 
 static inline int
 valid_suffix (const char suf)
@@ -341,7 +359,8 @@ enum simple_strtod_error
   SSE_FRACTION_FORBIDDEN_WITHOUT_SCALING,
   SSE_FRACTION_REQUIRES_SUFFIX,
   SSE_VALID_BUT_FORBIDDEN_SUFFIX,
-  SSE_INVALID_SUFFIX
+  SSE_INVALID_SUFFIX,
+  SSE_MISSING_I_SUFFIX
 };
 
 static enum simple_strtod_error
@@ -436,7 +455,7 @@ simple_strtod_human (const char *input_str,
   int have_fractions = 0;
   int power = 0;
   /* 'scale_auto' is checked below */
-  int scale_base = (allowed_scaling == scale_IEC) ? 1024 : 1000;
+  int scale_base = default_scale_base (allowed_scaling);
 
   if (dev_debug)
     error (0, 0, _("simple_stdtod_human:\n  input string: '%s'\n  "
@@ -487,6 +506,14 @@ simple_strtod_human (const char *input_str,
       if (dev_debug)
         error (0, 0, _("  Auto-scaling, found 'i', switching to base %d\n"),
                scale_base);
+    }
+
+  if (allowed_scaling == scale_IEC_I)
+    {
+      if (**ptr == 'i')
+        (*ptr)++;
+      else
+        return SSE_MISSING_I_SUFFIX;
     }
 
   long double multiplier = powerld (scale_base, power);
@@ -542,6 +569,10 @@ simple_strtod_fatal (enum simple_strtod_error err, char const *input_str)
       msgid = N_("invalid suffix in input: '%s'");
       break;
 
+    case SSE_MISSING_I_SUFFIX:
+      msgid = N_("missing 'i' suffix in input: '%s' (e.g Ki/Mi/Gi)");
+      break;
+
     }
 
   error (EXIT_FAILURE, 0, gettext (msgid), input_str);
@@ -571,7 +602,7 @@ double_to_human (long double val,
     }
 
   /* Scaling requested by user */
-  double scale_base = (scale == scale_SI) ? 1000 : 1024;
+  double scale_base = default_scale_base (scale);
 
   /* Normalize val to scale */
   unsigned int power = 0;
@@ -614,6 +645,8 @@ double_to_human (long double val,
   snprintf (buf, buf_size, (show_decimal_point) ? "%.1Lf%s" : "%.0Lf%s",
             val, suffix_power_character (power));
 
+  if (scale == scale_IEC_I)
+    strncat (buf, "i", buf_size);
 
   if (dev_debug)
     error (0, 0, _("  returning value: '%s'\n"), buf);
