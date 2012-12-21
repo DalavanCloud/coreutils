@@ -431,8 +431,8 @@ simple_strtod_human (const char *input_str,
   int scale_base=(allowed_scaling==scale_IEC)?1024:1000;
 
   if (dev_debug)
-    fprintf (stderr,"simple_stdtod_human:\n  input string: '%s'\n  " \
-            "locale decimal-point: '%s'\n", input_str,decimal_point);
+    error (0,0,_("simple_stdtod_human:\n  input string: '%s'\n  " \
+            "locale decimal-point: '%s'\n"), input_str,decimal_point);
 
   enum simple_strtod_error e =
         simple_strtod_float (input_str, ptr, value,&have_fractions );
@@ -440,8 +440,8 @@ simple_strtod_human (const char *input_str,
     return e;
 
   if (dev_debug)
-    fprintf (stderr,"  parsed numeric value: %Lf\n" \
-                    "  have_fractions = %d\n", *value, have_fractions);
+    error (0,0,_("  parsed numeric value: %Lf\n" \
+                    "  have_fractions = %d\n"), *value, have_fractions);
 
   if (have_fractions && allowed_scaling==scale_none)
         return SSE_FRACTION_FORBIDDEN_WITHOUT_SCALING;
@@ -454,8 +454,8 @@ simple_strtod_human (const char *input_str,
         return SSE_FRACTION_REQUIRES_SUFFIX;
 
       if (dev_debug)
-        fprintf (stderr,"  no fraction,suffix detected\n" \
-                       "  returning value: %Lf (%LG)\n", *value, *value);
+        error (0,0,_("  no fraction,suffix detected\n" \
+                       "  returning value: %Lf (%LG)\n"), *value, *value);
 
       return e;
     }
@@ -477,21 +477,21 @@ simple_strtod_human (const char *input_str,
       scale_base = 1024 ;
       (*ptr)++; /* skip second  ('i') suffix character */
       if (dev_debug)
-        fprintf (stderr,"  Auto-scaling, found 'i', switching to base %d\n",
+        error (0,0,_("  Auto-scaling, found 'i', switching to base %d\n"),
                 scale_base);
     }
 
   long double multiplier = powerld (scale_base,power);
 
   if (dev_debug)
-    fprintf (stderr, "  suffix power=%d^%d = %Lf\n",
+    error (0,0, _("  suffix power=%d^%d = %Lf\n"),
           scale_base,power,multiplier);
 
   /* TODO: detect loss of precision and overflows */
   (*value) = (*value) * multiplier;
 
   if (dev_debug)
-    fprintf (stderr,"  returning value: %Lf (%LG)\n", *value, *value);
+    error (0,0,_("  returning value: %Lf (%LG)\n"), *value, *value);
 
   return e;
 }
@@ -547,15 +547,15 @@ double_to_human (long double val,
                       enum round_type round)
 {
   if (dev_debug)
-    fprintf (stderr,"double_to_human:\n");
+    error (0,0,_("double_to_human:\n"));
 
   if (scale==scale_none)
     {
       if (dev_debug)
-          fprintf (stderr,
-                   (group)?"  no scaling, returning (grouped) value: %'.0Lf\n":
-                           "  no scaling, returning value: %.0Lf\n",
-                   val);
+          error (0,0,
+                 (group)?_("  no scaling, returning (grouped) value: %'.0Lf\n"):
+                         _("  no scaling, returning value: %.0Lf\n"),
+                 val);
 
       int i = snprintf (buf,buf_size,(group)?"%'.0Lf":"%.0Lf",val);
       if (i<0 || i>=(int)buf_size)
@@ -571,7 +571,7 @@ double_to_human (long double val,
   unsigned int power=0;
   val = expld (val, scale_base, &power);
   if (dev_debug)
-    fprintf (stderr,"  scaled value to %Lf * %0.f ^ %d\n",
+    error (0,0,_("  scaled value to %Lf * %0.f ^ %d\n"),
              val, scale_base, power);
 
   /* Perform rounding */
@@ -602,7 +602,7 @@ double_to_human (long double val,
                                 /* && (val>simple_round_floor (val)))*/
 
   if (dev_debug)
-    fprintf (stderr,"  after rounding, value=%Lf * %0.f ^ %d\n",
+    error (0,0,_("  after rounding, value=%Lf * %0.f ^ %d\n"),
              val, scale_base, power);
 
   snprintf (buf,buf_size, (show_decimal_point)?"%.1Lf%s":"%.0Lf%s",
@@ -610,7 +610,7 @@ double_to_human (long double val,
 
 
   if (dev_debug)
-    fprintf (stderr,"  returning value: '%s'\n", buf);
+    error (0,0,_("  returning value: '%s'\n"), buf);
 
   return buf;
 }
@@ -797,7 +797,7 @@ print_number (const long double val)
                              scale_to, grouping, _round);
 
   if (dev_debug)
-    fprintf (stderr,"Formatting output:\n  value: %Lf\n  humanized: '%s'\n",
+    error (0,0,_("formatting output:\n  value: %Lf\n  humanized: '%s'\n"),
             val,s);
 
   if (padding_width && strlen (s)<padding_width)
@@ -807,7 +807,7 @@ print_number (const long double val)
                padding_alignment,  MBA_UNIBYTE_ONLY );
 
       if (dev_debug)
-        fprintf (stderr,"  After padding: '%s'\n", padding_buffer);
+        error (0,0,_("  After padding: '%s'\n"), padding_buffer);
 
       fputs (padding_buffer,stdout);
     }
@@ -833,12 +833,12 @@ process_suffixed_number (char* text)
           /* trim suffix, ONLY if it's at the end of the text */
           *possible_suffix='\0';
           if (dev_debug)
-            fprintf (stderr,"Trimming suffix '%s'\n", suffix);
+            error (0,0,_("trimming suffix '%s'\n"), suffix);
         }
       else
         {
           if (dev_debug)
-            fprintf (stderr,"No valid suffix found\n");
+            error (0,0,_("no valid suffix found\n"));
         }
     }
 
@@ -861,7 +861,7 @@ process_suffixed_number (char* text)
          padding_width = 0;
        }
       if (dev_debug)
-        fprintf (stderr, "Setting Auto-Padding to %ld characters\n",
+        error (0,0, _("setting Auto-Padding to %ld characters\n"),
                 padding_width);
     }
 
@@ -929,7 +929,7 @@ extract_fields (char* line, int _field,
   *_suffix = NULL ;
 
   if (dev_debug)
-    fprintf (stderr,"Extracting Fields:\n  input: '%s'\n  field: %d\n",
+    error (0,0,_("extracting Fields:\n  input: '%s'\n  field: %d\n"),
         line, _field);
 
   if (field>1)
@@ -941,7 +941,7 @@ extract_fields (char* line, int _field,
         {
           /* not enough fields in the input - print warning? */
           if (dev_debug)
-            fprintf (stderr,"  TOO FEW FIELDS!\n  prefix: '%s'\n",
+            error (0,0,_("  TOO FEW FIELDS!\n  prefix: '%s'\n"),
                 *_prefix);
           return ;
         }
@@ -963,7 +963,7 @@ extract_fields (char* line, int _field,
     *_suffix=NULL;
 
   if (dev_debug)
-    fprintf (stderr,"  prefix: '%s'\n  number: '%s'\n  suffix: '%s'\n",
+    error (0,0,_("  prefix: '%s'\n  number: '%s'\n  suffix: '%s'\n"),
         *_prefix,*_data,*_suffix);
 }
 
