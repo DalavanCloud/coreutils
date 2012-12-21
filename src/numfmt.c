@@ -749,13 +749,19 @@ UNIT options:\n\
       1K = 1024\n\
       1G = 1048576\n\
       ...\n\
+ ieci:\n\
+      1Ki = 1024\n\
+      1Gi = 1048576\n\
+      ...\n\
 \n\
 "), stdout);
 
       printf (_("\
 \n\
 Examples:\n\
-  %s --to=si 1000           -> \"1K\"\n\
+  %s --to=si 1000           -> \"1.0K\"\n\
+  %s --to=iec 2048          -> \"2.0K\"\n\
+  %s --to=ieci 4096         -> \"4.0Ki\"\n\
   echo 1K | %s --from=si    -> \"1000\"\n\
   echo 1K | %s --from=iec   -> \"1024\"\n\
   df | %s --header --field 2 --to=si\n\
@@ -763,7 +769,8 @@ Examples:\n\
   ls -lh | %s --header --field 5 --from=iec --padding=10\n\
 "),
               program_name, program_name, program_name,
-              program_name, program_name, program_name);
+              program_name, program_name, program_name,
+              program_name, program_name);
       emit_ancillary_info ();
     }
   exit (status);
