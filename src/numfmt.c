@@ -740,14 +740,16 @@ Examples:\n\
 static inline void
 chomp (char *s)
 {
-  while (*s != 0) {
-      if (*s=='\n' || *s=='\r') {
-          *s = 0 ;
+  while (*s != 0)
+    {
+      if (*s == '\n' || *s == '\r')
+        {
+          *s = 0;
           return;
-      }
+        }
       ++s;
-  }
-  return ;
+    }
+  return;
 }
 
 
@@ -762,18 +764,18 @@ chomp (char *s)
    (besides a valid suffix) - exits with an error.
 */
 static enum simple_strtod_error
-parse_human_number (const char* str, long double /*output*/ *value)
+parse_human_number (const char *str, long double /*output */ *value)
 {
-  char *ptr=NULL;
+  char *ptr = NULL;
 
   enum simple_strtod_error e =
     simple_strtod_human (str, &ptr, value, scale_from);
-  if (e!= SSE_OK && e!=SSE_OK_PRECISION_LOSS)
-    simple_strtod_fatal (e,str);
+  if (e != SSE_OK && e != SSE_OK_PRECISION_LOSS)
+    simple_strtod_fatal (e, str);
 
-  if ( ptr && *ptr!='\0' )
-       error (EXIT_FAILURE,0,_("invalid suffix in input '%s': '%s'"),
-              str, ptr);
+  if (ptr && *ptr != '\0')
+    error (EXIT_FAILURE, 0, _("invalid suffix in input '%s': '%s'"),
+           str, ptr);
   return e;
 }
 
@@ -791,35 +793,35 @@ print_number (const long double val)
 
   /* Can't reliably print too-large values without auto-scaling */
   unsigned int x;
-  expld (val,10,&x);
-  if (scale_to==scale_none && x>MAX_UNSCALED_DIGITS)
-    error (EXIT_FAILURE,0,_("value too large to be printed: '%Lg'" \
-                             " (consider using --to)"), val);
-  if (x>MAX_ACCEPTABLE_DIGITS-1)
-    error (EXIT_FAILURE,0,_("value too large to be printed: '%Lg'" \
-                             " (cannot handle values > 999Y)"), val);
+  expld (val, 10, &x);
+  if (scale_to == scale_none && x > MAX_UNSCALED_DIGITS)
+    error (EXIT_FAILURE, 0, _("value too large to be printed: '%Lg'"
+                              " (consider using --to)"), val);
+  if (x > MAX_ACCEPTABLE_DIGITS - 1)
+    error (EXIT_FAILURE, 0, _("value too large to be printed: '%Lg'"
+                              " (cannot handle values > 999Y)"), val);
 
   char *s = double_to_human (val, buf, sizeof (buf),
                              scale_to, grouping, _round);
 
   if (dev_debug)
-    error (0,0,_("formatting output:\n  value: %Lf\n  humanized: '%s'\n"),
-            val,s);
+    error (0, 0, _("formatting output:\n  value: %Lf\n  humanized: '%s'\n"),
+           val, s);
 
-  if (padding_width && strlen (s)<padding_width)
+  if (padding_width && strlen (s) < padding_width)
     {
       size_t w = padding_width;
-      mbsalign (s,padding_buffer,padding_buffer_size,&w,
-               padding_alignment,  MBA_UNIBYTE_ONLY );
+      mbsalign (s, padding_buffer, padding_buffer_size, &w,
+                padding_alignment, MBA_UNIBYTE_ONLY);
 
       if (dev_debug)
-        error (0,0,_("  After padding: '%s'\n"), padding_buffer);
+        error (0, 0, _("  After padding: '%s'\n"), padding_buffer);
 
-      fputs (padding_buffer,stdout);
+      fputs (padding_buffer, stdout);
     }
   else
     {
-      fputs (s,stdout);
+      fputs (s, stdout);
     }
 }
 
@@ -828,61 +830,61 @@ print_number (const long double val)
    and handles automatic suffix addition.
  */
 static void
-process_suffixed_number (char* text)
+process_suffixed_number (char *text)
 {
-  if (suffix && strlen (text)>strlen (suffix))
+  if (suffix && strlen (text) > strlen (suffix))
     {
-      char *possible_suffix = text+strlen (text)-strlen (suffix);
+      char *possible_suffix = text + strlen (text) - strlen (suffix);
 
-      if (STREQ (suffix,possible_suffix))
+      if (STREQ (suffix, possible_suffix))
         {
           /* trim suffix, ONLY if it's at the end of the text */
-          *possible_suffix='\0';
+          *possible_suffix = '\0';
           if (dev_debug)
-            error (0,0,_("trimming suffix '%s'\n"), suffix);
+            error (0, 0, _("trimming suffix '%s'\n"), suffix);
         }
       else
         {
           if (dev_debug)
-            error (0,0,_("no valid suffix found\n"));
+            error (0, 0, _("no valid suffix found\n"));
         }
     }
 
-  /* Skip white space - always*/
+  /* Skip white space - always */
   char *p = text;
-  while ( *p && isblank (*p) )
+  while (*p && isblank (*p))
     ++p;
-  const unsigned int skip_count = text-p;
+  const unsigned int skip_count = text - p;
 
   /* setup auto-padding */
   if (auto_padding)
     {
-      if (skip_count>0 || field>1)
+      if (skip_count > 0 || field > 1)
         {
           padding_width = strlen (text);
           setup_padding_buffer (padding_width);
         }
       else
-       {
-         padding_width = 0;
-       }
+        {
+          padding_width = 0;
+        }
       if (dev_debug)
-        error (0,0, _("setting Auto-Padding to %ld characters\n"),
-                padding_width);
+        error (0, 0, _("setting Auto-Padding to %ld characters\n"),
+               padding_width);
     }
 
-  long double val=0;
-  enum simple_strtod_error e = parse_human_number (p,&val);
-  if (e==SSE_OK_PRECISION_LOSS && debug)
-    error (0,0,_("large input value '%s': possible precision loss"),p);
+  long double val = 0;
+  enum simple_strtod_error e = parse_human_number (p, &val);
+  if (e == SSE_OK_PRECISION_LOSS && debug)
+    error (0, 0, _("large input value '%s': possible precision loss"), p);
 
-  if (from_unit_size!=1 || to_unit_size != 1)
-          val = (val * from_unit_size) / to_unit_size;
+  if (from_unit_size != 1 || to_unit_size != 1)
+    val = (val * from_unit_size) / to_unit_size;
 
   print_number (val);
 
   if (suffix)
-    fputs (suffix,stdout);
+    fputs (suffix, stdout);
 }
 
 /*
@@ -891,11 +893,11 @@ process_suffixed_number (char* text)
    Returns a pointer to the *delimiter* of the requested field,
    or a pointer to NULL (if reached the end of the string)
  */
-static inline char*
+static inline char *
 __attribute ((pure))
-skip_fields (char* buf, int fields)
+skip_fields (char *buf, int fields)
 {
-  char* ptr = buf;
+  char *ptr = buf;
   if (delimiter != DELIMITER_DEFAULT)
     while (*ptr && fields--)
       {
@@ -924,40 +926,38 @@ skip_fields (char* buf, int fields)
      in the input string, or be NULL if not such part exist.
  */
 static void
-extract_fields (char* line, int _field,
-                char** /*out*/ _prefix,
-                char** /*out*/ _data,
-                char** /*out*/ _suffix)
+extract_fields (char *line, int _field, char ** /*out */ _prefix,
+                char ** /*out */ _data,
+                char ** /*out */ _suffix)
 {
-  char* ptr = line ;
+  char *ptr = line;
   *_prefix = NULL;
-  *_data = NULL ;
-  *_suffix = NULL ;
+  *_data = NULL;
+  *_suffix = NULL;
 
   if (dev_debug)
-    error (0,0,_("extracting Fields:\n  input: '%s'\n  field: %d\n"),
-        line, _field);
+    error (0, 0, _("extracting Fields:\n  input: '%s'\n  field: %d\n"),
+           line, _field);
 
-  if (field>1)
+  if (field > 1)
     {
       /* skip the requested number of fields */
       *_prefix = line;
-      ptr = skip_fields (line, field-1);
-      if (*ptr=='\0')
+      ptr = skip_fields (line, field - 1);
+      if (*ptr == '\0')
         {
           /* not enough fields in the input - print warning? */
           if (dev_debug)
-            error (0,0,_("  TOO FEW FIELDS!\n  prefix: '%s'\n"),
-                *_prefix);
-          return ;
+            error (0, 0, _("  TOO FEW FIELDS!\n  prefix: '%s'\n"), *_prefix);
+          return;
         }
 
-      *ptr='\0';
+      *ptr = '\0';
       ++ptr;
     }
 
   *_data = ptr;
-  *_suffix = skip_fields (*_data,1);
+  *_suffix = skip_fields (*_data, 1);
   if (**_suffix)
     {
       /* there is a suffix (i.e. the field is not the last on the line),
@@ -966,11 +966,11 @@ extract_fields (char* line, int _field,
       ++(*_suffix);
     }
   else
-    *_suffix=NULL;
+    *_suffix = NULL;
 
   if (dev_debug)
-    error (0,0,_("  prefix: '%s'\n  number: '%s'\n  suffix: '%s'\n"),
-        *_prefix,*_data,*_suffix);
+    error (0, 0, _("  prefix: '%s'\n  number: '%s'\n  suffix: '%s'\n"),
+           *_prefix, *_data, *_suffix);
 }
 
 
@@ -978,29 +978,29 @@ extract_fields (char* line, int _field,
    Converts a number in a given line of text.
  */
 static void
-process_line (char* line)
+process_line (char *line)
 {
-  char *pre,*num,*suf;
-  extract_fields (line,field,&pre,&num,&suf);
+  char *pre, *num, *suf;
+  extract_fields (line, field, &pre, &num, &suf);
   if (pre)
-      fputs (pre,stdout);
+    fputs (pre, stdout);
 
   if (pre && num)
-      fputc ((delimiter==DELIMITER_DEFAULT)?' ':delimiter, stdout);
+    fputc ((delimiter == DELIMITER_DEFAULT) ? ' ' : delimiter, stdout);
 
   if (num)
     process_suffixed_number (num);
   if (!num && debug)
-    error (0,0,_("input line is too short, " \
-                 "no numbers found to convert in field %ld"), field);
+    error (0, 0, _("input line is too short, "
+                   "no numbers found to convert in field %ld"), field);
 
   if (suf)
     {
-      fputc ((delimiter==DELIMITER_DEFAULT)?' ':delimiter, stdout);
-      fputs (suf,stdout);
+      fputc ((delimiter == DELIMITER_DEFAULT) ? ' ' : delimiter, stdout);
+      fputs (suf, stdout);
     }
 
-  fputs ("\n",stdout);
+  fputs ("\n", stdout);
 }
 
 int
@@ -1013,9 +1013,9 @@ main (int argc, char **argv)
   textdomain (PACKAGE);
 
   decimal_point = nl_langinfo (RADIXCHAR);
-  if (decimal_point==NULL || strlen (decimal_point)==0)
+  if (decimal_point == NULL || strlen (decimal_point) == 0)
     decimal_point = ".";
-  decimal_point_length=strlen (decimal_point);
+  decimal_point_length = strlen (decimal_point);
 
   atexit (close_stdout);
 
@@ -1054,10 +1054,10 @@ main (int argc, char **argv)
           break;
 
         case PADDING_OPTION:
-          if (xstrtol (optarg,NULL,10, &padding_width,"")!=LONGINT_OK
-              || padding_width==0)
-            error (EXIT_FAILURE,0,_("invalid padding value '%s'"),optarg);
-          if (padding_width<0)
+          if (xstrtol (optarg, NULL, 10, &padding_width, "") != LONGINT_OK
+              || padding_width == 0)
+            error (EXIT_FAILURE, 0, _("invalid padding value '%s'"), optarg);
+          if (padding_width < 0)
             {
               padding_alignment = MBS_ALIGN_LEFT;
               padding_width = -padding_width;
@@ -1066,15 +1066,16 @@ main (int argc, char **argv)
           break;
 
         case FIELD_OPTION:
-          if (xstrtol (optarg,NULL,10, &field,"")!=LONGINT_OK
-                || field<=0)
-              error (EXIT_FAILURE,0,_("invalid field value '%s'"),optarg);
+          if (xstrtol (optarg, NULL, 10, &field, "") != LONGINT_OK
+              || field <= 0)
+            error (EXIT_FAILURE, 0, _("invalid field value '%s'"), optarg);
           break;
 
         case 'd':
-          if (strlen (optarg)!=1)
-            error (EXIT_FAILURE,0,_("delimiter must be exactly one character"));
-          delimiter=optarg[0];
+          if (strlen (optarg) != 1)
+            error (EXIT_FAILURE, 0,
+                   _("delimiter must be exactly one character"));
+          delimiter = optarg[0];
           break;
 
         case SUFFIX_OPTION:
@@ -1082,24 +1083,25 @@ main (int argc, char **argv)
           break;
 
         case DEBUG_OPTION:
-          debug=1;
+          debug = 1;
           break;
 
         case DEV_DEBUG_OPTION:
-          dev_debug=1;
-          debug=1;
+          dev_debug = 1;
+          debug = 1;
           break;
 
         case HEADER_OPTION:
           if (optarg)
             {
-              if (xstrtoumax (optarg,NULL,10,&header,"")!=LONGINT_OK
-                  || header==0)
-                error (EXIT_FAILURE,0,_("invalid header value '%s'"), optarg);
+              if (xstrtoumax (optarg, NULL, 10, &header, "") != LONGINT_OK
+                  || header == 0)
+                error (EXIT_FAILURE, 0, _("invalid header value '%s'"),
+                       optarg);
             }
           else
             {
-              header=1;
+              header = 1;
             }
           break;
 
@@ -1111,25 +1113,25 @@ main (int argc, char **argv)
         }
     }
 
-  auto_padding = (padding_width==0 && delimiter==DELIMITER_DEFAULT);
+  auto_padding = (padding_width == 0 && delimiter == DELIMITER_DEFAULT);
 
   if (grouping)
     {
-      if (scale_to!=scale_none)
-        error (EXIT_FAILURE,0,_("--grouping cannot be combined with --to"));
-      if (debug && (strlen (nl_langinfo (THOUSEP))==0))
-            error (0,0,_("--grouping has no effect in this locale"));
+      if (scale_to != scale_none)
+        error (EXIT_FAILURE, 0, _("--grouping cannot be combined with --to"));
+      if (debug && (strlen (nl_langinfo (THOUSEP)) == 0))
+        error (0, 0, _("--grouping has no effect in this locale"));
     }
 
   /* Warn about no-op */
-  if (debug && scale_from==scale_none && scale_to==scale_none
-      && !grouping && (padding_width==0))
-      error (0,0,_("no conversion option specified"));
+  if (debug && scale_from == scale_none && scale_to == scale_none
+      && !grouping && (padding_width == 0))
+    error (0, 0, _("no conversion option specified"));
 
   if (argc > optind)
     {
       if (debug && header)
-        error (0,0,_("--header ignored with command-line input"));
+        error (0, 0, _("--header ignored with command-line input"));
 
       for (; optind < argc; optind++)
         process_line (argv[optind]);
@@ -1139,19 +1141,19 @@ main (int argc, char **argv)
       char buf[BUFFER_SIZE + 1];
 
       /* FIXME: check if the line is too long,
-                'buf' doesn't contain a CRLF, and so this isn't
-                the entire line */
-      while ( header-- && fgets (buf,BUFFER_SIZE,stdin) != NULL )
-          fputs (buf,stdout);
+         'buf' doesn't contain a CRLF, and so this isn't
+         the entire line */
+      while (header-- && fgets (buf, BUFFER_SIZE, stdin) != NULL)
+        fputs (buf, stdout);
 
-      while ( fgets (buf,BUFFER_SIZE,stdin) != NULL )
+      while (fgets (buf, BUFFER_SIZE, stdin) != NULL)
         {
           chomp (buf);
           process_line (buf);
         }
 
       if (ferror (stdin))
-          error (0,errno,_("error reading input"));
+        error (0, errno, _("error reading input"));
     }
 
   free (padding_buffer);
