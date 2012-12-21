@@ -87,7 +87,7 @@ enum round_type
 
 static char const *const round_args[] =
 {
-  "ceiling","floor","nearest", NULL
+  "ceiling", "floor", "nearest", NULL
 };
 
 static enum round_type const round_types[] =
@@ -241,11 +241,11 @@ suffix_power_character (unsigned int power)
 static long double
 powerld (long double base, unsigned int x)
 {
-  long double result=base;
-  if (x==0)
-    return 1; /* note for test coverage: this is never reached,
-                 as 'powerld' won't be called if there's no suffix,
-                 hence, no "power" */
+  long double result = base;
+  if (x == 0)
+    return 1;                   /* note for test coverage: this is never
+                                   reached, as 'powerld' won't be called if
+                                   there's no suffix, hence, no "power" */
 
   /* TODO: check for overflow, inf? */
   while (--x)
@@ -258,10 +258,10 @@ powerld (long double base, unsigned int x)
  *   Similar to "frexpl(3)" but without requiring 'libm',
  *   allowing only integer scale, limited functionlity and error checking.*/
 static long double
-expld (long double val, unsigned int base, unsigned int /*output*/ *x)
+expld (long double val, unsigned int base, unsigned int /*output */ *x)
 {
-  unsigned int power=0;
-  while (val>=base)
+  unsigned int power = 0;
+  while (val >= base)
     {
       ++power;
       val /= base;
@@ -276,7 +276,7 @@ expld (long double val, unsigned int base, unsigned int /*output*/ *x)
 static inline int
 simple_round_nearest (long double val)
 {
-  return (int)(val+0.5);
+  return (int) (val + 0.5);
 }
 
 /* EXTREMELY limited 'floor' - without 'libm' .
@@ -284,7 +284,7 @@ simple_round_nearest (long double val)
 static inline int
 simple_round_floor (long double val)
 {
-  return (int)val;
+  return (int) val;
 }
 
 /* EXTREMELY limited 'ceil' - without 'libm' .
@@ -293,7 +293,7 @@ static inline int
 simple_round_ceiling (long double val)
 {
   return simple_round_floor (val)
-         + (((val - simple_round_floor (val))>0) ? 1 : 0);
+    + (((val - simple_round_floor (val)) > 0) ? 1 : 0);
 }
 
 static inline int
@@ -311,7 +311,8 @@ simple_round (long double val, enum round_type t)
       return simple_round_nearest (val);
 
     default:
-      return 0; /* to silence to compiler - this shnuld never happen */
+      /* to silence the compiler - this should never happen */
+      return 0;
     }
 }
 
@@ -331,7 +332,7 @@ simple_round (long double val, enum round_type t)
  */
 enum simple_strtod_error
 {
-  SSE_OK=0,
+  SSE_OK = 0,
   SSE_OK_PRECISION_LOSS,
   SSE_OVERFLOW,
   SSE_INVALID_NUMBER,
@@ -345,25 +346,27 @@ enum simple_strtod_error
 
 static enum simple_strtod_error
 simple_strtod_int (const char *input_str,
-                   char* /*output*/ *ptr, /*required, unlike in stdtod */
-                   long double /*output*/ *value)
+                   char /*output*/ **ptr, /*required, unlike in stdtod */
+                   long double /* output */ *value)
 {
   enum simple_strtod_error e = SSE_OK;
 
-  long double val=0;
-  unsigned int digits=0;
-  *ptr = (char*)input_str;
-  while ( (*ptr) && isdigit ((**ptr)) )
+  long double val = 0;
+  unsigned int digits = 0;
+  *ptr = (char *) input_str;
+  while ((*ptr) && isdigit ((**ptr)))
     {
       int digit = (**ptr) - '0';
-      if (digit<0 || digit>9)
-        return SSE_INVALID_NUMBER; /* can this happen in some strange locale? */
 
-      if (digits>MAX_UNSCALED_DIGITS)
-           e = SSE_OK_PRECISION_LOSS;
+      /* can this happen in some strange locale? */
+      if (digit < 0 || digit > 9)
+        return SSE_INVALID_NUMBER;
+
+      if (digits > MAX_UNSCALED_DIGITS)
+        e = SSE_OK_PRECISION_LOSS;
 
       ++digits;
-      if (digits>MAX_ACCEPTABLE_DIGITS)
+      if (digits > MAX_ACCEPTABLE_DIGITS)
         return SSE_OVERFLOW;
 
       val *= 10;
@@ -371,7 +374,7 @@ simple_strtod_int (const char *input_str,
 
       ++(*ptr);
     }
-  if (digits==0)
+  if (digits == 0)
     return SSE_INVALID_NUMBER;
   if (value)
     *value = val;
@@ -385,40 +388,41 @@ simple_strtod_int (const char *input_str,
 static enum simple_strtod_error
 simple_strtod_float (const char *input_str,
                    char* /*output*/ *ptr, /*required, unlike in stdtod */
-                   long double /*output*/ *value,
+                   long double /*output */ *value,
                    int /*output*/ *have_fractions)
 {
   enum simple_strtod_error e = SSE_OK;
 
-  *have_fractions = 0 ;
+  *have_fractions = 0;
 
   /* TODO: accept locale'd grouped values for the integral part */
   e = simple_strtod_int (input_str, ptr, value);
-  if (e!=SSE_OK && e!=SSE_OK_PRECISION_LOSS)
+  if (e != SSE_OK && e != SSE_OK_PRECISION_LOSS)
     return e;
 
 
   /* optional decimal point + fraction */
-  if (STREQ_LEN (*ptr,decimal_point,decimal_point_length))
+  if (STREQ_LEN (*ptr, decimal_point, decimal_point_length))
     {
       char *ptr2;
-      long double val_frac=0;
+      long double val_frac = 0;
 
       (*ptr) += decimal_point_length;
-      enum simple_strtod_error e2 = simple_strtod_int (*ptr,&ptr2,&val_frac);
-      if (e2!=SSE_OK && e2!=SSE_OK_PRECISION_LOSS)
+      enum simple_strtod_error e2 =
+        simple_strtod_int (*ptr, &ptr2, &val_frac);
+      if (e2 != SSE_OK && e2 != SSE_OK_PRECISION_LOSS)
         return e2;
-      if (e2==SSE_OK_PRECISION_LOSS)
-        e = e2 ; /* propegate warning */
+      if (e2 == SSE_OK_PRECISION_LOSS)
+        e = e2;                 /* propegate warning */
 
-      int exponent = ptr2-*ptr; /* number of digits in the fractions */
-      val_frac = ((long double)val_frac)/powerld (10,exponent);
+      int exponent = ptr2 - *ptr;       /* number of digits in the fractions */
+      val_frac = ((long double) val_frac) / powerld (10, exponent);
 
       *value += val_frac;
 
-      *have_fractions = 1 ;
+      *have_fractions = 1;
 
-      *ptr=ptr2;
+      *ptr = ptr2;
     }
   return e;
 }
@@ -429,36 +433,36 @@ simple_strtod_human (const char *input_str,
               long double /*output*/ *value, /* required */
               enum scale_type allowed_scaling)
 {
-  int have_fractions=0;
-  int power=0;
+  int have_fractions = 0;
+  int power = 0;
   /* 'scale_auto' is checked below */
-  int scale_base=(allowed_scaling==scale_IEC)?1024:1000;
+  int scale_base = (allowed_scaling == scale_IEC) ? 1024 : 1000;
 
   if (dev_debug)
-    error (0,0,_("simple_stdtod_human:\n  input string: '%s'\n  " \
-            "locale decimal-point: '%s'\n"), input_str,decimal_point);
+    error (0, 0, _("simple_stdtod_human:\n  input string: '%s'\n  "
+                   "locale decimal-point: '%s'\n"), input_str, decimal_point);
 
   enum simple_strtod_error e =
-        simple_strtod_float (input_str, ptr, value,&have_fractions );
-  if (e!=SSE_OK && e!=SSE_OK_PRECISION_LOSS)
+    simple_strtod_float (input_str, ptr, value, &have_fractions);
+  if (e != SSE_OK && e != SSE_OK_PRECISION_LOSS)
     return e;
 
   if (dev_debug)
-    error (0,0,_("  parsed numeric value: %Lf\n" \
-                    "  have_fractions = %d\n"), *value, have_fractions);
+    error (0, 0, _("  parsed numeric value: %Lf\n"
+                   "  have_fractions = %d\n"), *value, have_fractions);
 
-  if (have_fractions && allowed_scaling==scale_none)
-        return SSE_FRACTION_FORBIDDEN_WITHOUT_SCALING;
+  if (have_fractions && allowed_scaling == scale_none)
+    return SSE_FRACTION_FORBIDDEN_WITHOUT_SCALING;
 
 
   /* no suffix / trailing characters */
-  if (**ptr=='\0')
+  if (**ptr == '\0')
     {
       if (have_fractions)
         return SSE_FRACTION_REQUIRES_SUFFIX;
 
       if (dev_debug)
-        error (0,0,_("  no fraction,suffix detected\n" \
+        error (0, 0, _("  no fraction,suffix detected\n"
                        "  returning value: %Lf (%LG)\n"), *value, *value);
 
       return e;
@@ -468,50 +472,50 @@ simple_strtod_human (const char *input_str,
   if (!valid_suffix (**ptr))
     return SSE_INVALID_SUFFIX;
 
-  if (allowed_scaling==scale_none)
+  if (allowed_scaling == scale_none)
     return SSE_VALID_BUT_FORBIDDEN_SUFFIX;
 
   power = suffix_power (**ptr);
-  (*ptr)++; /* skip first suffix character */
+  (*ptr)++;                     /* skip first suffix character */
 
-  if (allowed_scaling==scale_auto && **ptr=='i')
+  if (allowed_scaling == scale_auto && **ptr == 'i')
     {
       /* auto-scaling enabled, and the first suffix character
          is followed by an 'i' (e.g. Ki, Mi, Gi) */
-      scale_base = 1024 ;
-      (*ptr)++; /* skip second  ('i') suffix character */
+      scale_base = 1024;
+      (*ptr)++;                 /* skip second  ('i') suffix character */
       if (dev_debug)
-        error (0,0,_("  Auto-scaling, found 'i', switching to base %d\n"),
-                scale_base);
+        error (0, 0, _("  Auto-scaling, found 'i', switching to base %d\n"),
+               scale_base);
     }
 
-  long double multiplier = powerld (scale_base,power);
+  long double multiplier = powerld (scale_base, power);
 
   if (dev_debug)
-    error (0,0, _("  suffix power=%d^%d = %Lf\n"),
-          scale_base,power,multiplier);
+    error (0, 0, _("  suffix power=%d^%d = %Lf\n"),
+           scale_base, power, multiplier);
 
   /* TODO: detect loss of precision and overflows */
   (*value) = (*value) * multiplier;
 
   if (dev_debug)
-    error (0,0,_("  returning value: %Lf (%LG)\n"), *value, *value);
+    error (0, 0, _("  returning value: %Lf (%LG)\n"), *value, *value);
 
   return e;
 }
 
 
 static void
-simple_strtod_fatal (enum simple_strtod_error err,
-                     char const *input_str)
+simple_strtod_fatal (enum simple_strtod_error err, char const *input_str)
 {
-  char const *msgid=NULL;
+  char const *msgid = NULL;
 
   switch (err)
     {
     case SSE_OK_PRECISION_LOSS:
     case SSE_OK:
-      abort (); /* should never happen - this function isn't called when OK */
+      /* should never happen - this function isn't called when OK */
+      abort ();
 
     case SSE_OVERFLOW:
       msgid = N_("value too large to be converted: '%s'");
@@ -540,47 +544,45 @@ simple_strtod_fatal (enum simple_strtod_error err,
 
     }
 
-  error (EXIT_FAILURE,0,gettext (msgid), input_str);
+  error (EXIT_FAILURE, 0, gettext (msgid), input_str);
 }
 
-static char*
+static char *
 double_to_human (long double val,
-                      char* buf, size_t buf_size,
-                      enum scale_type scale,
-                      int group,
-                      enum round_type round)
+                 char *buf, size_t buf_size,
+                 enum scale_type scale, int group, enum round_type round)
 {
   if (dev_debug)
-    error (0,0,_("double_to_human:\n"));
+    error (0, 0, _("double_to_human:\n"));
 
-  if (scale==scale_none)
+  if (scale == scale_none)
     {
       if (dev_debug)
-          error (0,0,
-                 (group)?_("  no scaling, returning (grouped) value: %'.0Lf\n"):
-                         _("  no scaling, returning value: %.0Lf\n"),
-                 val);
+        error (0, 0,
+               (group) ?
+               _("  no scaling, returning (grouped) value: %'.0Lf\n") :
+               _("  no scaling, returning value: %.0Lf\n"), val);
 
-      int i = snprintf (buf,buf_size,(group)?"%'.0Lf":"%.0Lf",val);
-      if (i<0 || i>=(int)buf_size)
-        error (EXIT_FAILURE,0,_("failed to prepare value '%Lf' for printing"),
-              val);
+      int i = snprintf (buf, buf_size, (group) ? "%'.0Lf" : "%.0Lf", val);
+      if (i < 0 || i >= (int) buf_size)
+        error (EXIT_FAILURE, 0,
+               _("failed to prepare value '%Lf' for printing"), val);
       return buf;
     }
 
   /* Scaling requested by user */
-  double scale_base=(scale==scale_SI)?1000:1024;
+  double scale_base = (scale == scale_SI) ? 1000 : 1024;
 
   /* Normalize val to scale */
-  unsigned int power=0;
+  unsigned int power = 0;
   val = expld (val, scale_base, &power);
   if (dev_debug)
-    error (0,0,_("  scaled value to %Lf * %0.f ^ %d\n"),
-             val, scale_base, power);
+    error (0, 0, _("  scaled value to %Lf * %0.f ^ %d\n"),
+           val, scale_base, power);
 
   /* Perform rounding */
   int ten_or_less = 0;
-  if (val<10)
+  if (val < 10)
     {
       /* for values less than 10, we allow one decimal-point digit,
        * so adjust before rounding */
@@ -592,29 +594,29 @@ double_to_human (long double val,
    * 1. a "999.99" can turn into 1000 - so scale down
    * 2. a "9.99" can turn into 10 - so don't display decimal-point
    */
-  if (val>=scale_base)
+  if (val >= scale_base)
     {
       val /= scale_base;
       power++;
     }
   if (ten_or_less)
-      val /= 10;
+    val /= 10;
 
   /* should "7.0" be printed as "7" ?
    * if removing the ".0" is preffered, enable the fourth condition */
-  int show_decimal_point = (val!=0) && (val<10) && (power>0) ;
-                                /* && (val>simple_round_floor (val)))*/
+  int show_decimal_point = (val != 0) && (val < 10) && (power > 0);
+  /* && (val>simple_round_floor (val))) */
 
   if (dev_debug)
-    error (0,0,_("  after rounding, value=%Lf * %0.f ^ %d\n"),
-             val, scale_base, power);
+    error (0, 0, _("  after rounding, value=%Lf * %0.f ^ %d\n"),
+           val, scale_base, power);
 
-  snprintf (buf,buf_size, (show_decimal_point)?"%.1Lf%s":"%.0Lf%s",
-           val,suffix_power_character (power));
+  snprintf (buf, buf_size, (show_decimal_point) ? "%.1Lf%s" : "%.0Lf%s",
+            val, suffix_power_character (power));
 
 
   if (dev_debug)
-    error (0,0,_("  returning value: '%s'\n"), buf);
+    error (0, 0, _("  returning value: '%s'\n"), buf);
 
   return buf;
 }
@@ -627,28 +629,28 @@ static uintmax_t
 string_to_integer (const char *n_string)
 {
   strtol_error s_err;
-  char* ptr=NULL;
+  char *ptr = NULL;
   uintmax_t n;
 
   s_err = xstrtoumax (n_string, &ptr, 10, &n, "KMGTPEZY");
 
-  if (s_err != LONGINT_OK || *ptr!='\0')
-      error (EXIT_FAILURE, 0, _("invalid unit size: '%s'"), n_string);
+  if (s_err != LONGINT_OK || *ptr != '\0')
+    error (EXIT_FAILURE, 0, _("invalid unit size: '%s'"), n_string);
 
   return n;
 }
 
 
 static void
-setup_padding_buffer ( size_t min_size )
+setup_padding_buffer (size_t min_size)
 {
   if (padding_buffer_size > min_size)
-    return ;
+    return;
 
-  padding_buffer_size = min_size+1;
+  padding_buffer_size = min_size + 1;
   padding_buffer = realloc (padding_buffer, padding_buffer_size);
   if (!padding_buffer)
-    error (EXIT_FAILURE,0, _("out of memory (requested %zu bytes)"),
+    error (EXIT_FAILURE, 0, _("out of memory (requested %zu bytes)"),
            padding_buffer_size);
 }
 
