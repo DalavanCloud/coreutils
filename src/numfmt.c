@@ -734,39 +734,43 @@ Numbers can be processed either from stdin or command arguments.\n\
       fputs (_("\
 \n\
 UNIT options:\n\
- none:\n\
-      No auto-scaling is done. Suffixes will trigger an error.\n\
- auto ('--from' only):\n\
-      1K  = 1000\n\
-      1Ki = 1024\n\
-      1G  = 1000000\n\
-      1Gi = 1048576\n\
- si:\n\
-      1K = 1000\n\
-      1G  = 1000000\n\
-      ...\n\
- iec:\n\
-      1K = 1024\n\
-      1G = 1048576\n\
-      ...\n\
- ieci:\n\
-      1Ki = 1024\n\
-      1Gi = 1048576\n\
-      ...\n\
+  none       No auto-scaling is done. Suffixes will trigger an error.\n\
+  auto       Accept optional single-letter/two-letter suffix:\n\
+             1K  = 1000\n\
+             1Ki = 1024\n\
+             1G  = 1000000\n\
+             1Gi = 1048576\n\
+  si         Accept optional single letter suffix:\n\
+             1K = 1000\n\
+             1G  = 1000000\n\
+             ...\n\
+  iec        Accept optional single letter suffix:\n\
+             1K = 1024\n\
+             1G = 1048576\n\
+             ...\n\
+  ieci       Accept optional two-letter suffix:\n\
+             1Ki = 1024\n\
+             1Gi = 1048576\n\
+             ...\n\
 \n\
 "), stdout);
 
       printf (_("\
 \n\
 Examples:\n\
-  %s --to=si 1000           -> \"1.0K\"\n\
-  %s --to=iec 2048          -> \"2.0K\"\n\
-  %s --to=ieci 4096         -> \"4.0Ki\"\n\
-  echo 1K | %s --from=si    -> \"1000\"\n\
-  echo 1K | %s --from=iec   -> \"1024\"\n\
-  df | %s --header --field 2 --to=si\n\
-  ls -l | %s --header --field 5 --to=iec\n\
-  ls -lh | %s --header --field 5 --from=iec --padding=10\n\
+  $ %s --to=si 1000\n\
+            -> \"1.0K\"\n\
+  $ %s --to=iec 2048\n\
+           -> \"2.0K\"\n\
+  $ %s --to=ieci 4096\n\
+           -> \"4.0Ki\"\n\
+  $ echo 1K | %s --from=si\n\
+           -> \"1000\"\n\
+  $ echo 1K | %s --from=iec\n\
+           -> \"1024\"\n\
+  $ df | %s --header --field 2 --to=si\n\
+  $ ls -l | %s --header --field 5 --to=iec\n\
+  $ ls -lh | %s --header --field 5 --from=iec --padding=10\n\
 "),
               program_name, program_name, program_name,
               program_name, program_name, program_name,
