@@ -383,6 +383,9 @@ my @Tests =
      ['dbl-to-human-2.4','--to=iec 1023',  {OUT=>"1023"}],
      ['dbl-to-human-2.5','--to=iec 1024',  {OUT=>"1.0K"}],
      ['dbl-to-human-2.6','--to=iec 1025',  {OUT=>"1.1K"}],
+     ['dbl-to-human-2.7','--to=iec 0',  {OUT=>"0"}],
+     # no "i" suffix if output has no suffix
+     ['dbl-to-human-2.8','--to=ieci 0',  {OUT=>"0"}],
 
      # values resulting in "N.Nx" output
      ['dbl-to-human-3','--to=si 8000', {OUT=>"8.0K"}],

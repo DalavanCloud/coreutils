@@ -645,7 +645,7 @@ double_to_human (long double val,
   snprintf (buf, buf_size, (show_decimal_point) ? "%.1Lf%s" : "%.0Lf%s",
             val, suffix_power_character (power));
 
-  if (scale == scale_IEC_I)
+  if (scale == scale_IEC_I && power > 0)
     strncat (buf, "i", buf_size);
 
   if (dev_debug)
