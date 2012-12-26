@@ -886,6 +886,7 @@ parse_format_string (char const *fmt)
       i++;
     }
   i += strspn (fmt + i, " ");
+  errno = 0;
   pad = strtol (fmt + i, &endptr, 10);
   if (errno != 0)
     error (EXIT_FAILURE, 0,
