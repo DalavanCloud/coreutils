@@ -747,11 +747,17 @@ Numbers can be processed either from stdin or command arguments.\n\
                   N defaults to 1 if not specified.\n\
   --field N       replace the number in input field N (default is 1)\n\
   -d, --delimiter=X  use X instead of whitespace for field delimiter\n\
+  --format=FORMAT use printf style floating-point FORMAT.\n\
+                  See FORMAT below for details.\n\
+  --ignore-errors ignore input errors and continue.\n\
+                  Invalid input will be printed as-is without conversion.\n\
+                  See EXIT CODE below for details.\n\
   --debug         print warnings about invalid input.\n\
   \n\
 "), stdout);
       fputs (HELP_OPTION_DESCRIPTION, stdout);
       fputs (VERSION_OPTION_DESCRIPTION, stdout);
+
 
       fputs (_("\
 \n\
@@ -777,6 +783,27 @@ UNIT options:\n\
 \n\
 "), stdout);
 
+      fputs (_("\
+\n\
+FORMAT must be suitable for printing one floating-point argument '%f'.\n\
+Optional quote (%'f) will enable --grouping (if supported by current locale).\n\
+Optional width value (%10f) will pad output. Optional negative width values\n\
+(%-10f) will left-pad output.\n\
+\n\
+"), stdout);
+
+      printf (_("\
+\n\
+Exit status is 0 if all input numbers were successfully converted.\n\
+By default, %s will stop at the first conversion error with exit status 1.\n\
+When --ignore-errors is used, %s will not stop at convesion errors, and will\n\
+exit with status 0 if all numbers were successfully converted, status 1 on \n\
+critical errors, or status 2 if some numbers were not converted successfully.\n\
+\n\
+"), program_name, program_name);
+
+
+
       printf (_("\
 \n\
 Examples:\n\
@@ -793,10 +820,11 @@ Examples:\n\
   $ df | %s --header --field 2 --to=si\n\
   $ ls -l | %s --header --field 5 --to=iec\n\
   $ ls -lh | %s --header --field 5 --from=iec --padding=10\n\
+  $ ls -lh | %s --header --field 5 --from=iec --format %%10f\n\
 "),
               program_name, program_name, program_name,
               program_name, program_name, program_name,
-              program_name, program_name);
+              program_name, program_name, program_name);
       emit_ancillary_info ();
     }
   exit (status);
