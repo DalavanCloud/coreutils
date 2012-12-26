@@ -1145,9 +1145,6 @@ process_line (char *line)
 
   if (num)
     process_suffixed_number (num);
-  if (!num && debug)
-    error (0, 0, _("input line is too short, "
-                   "no numbers found to convert in field %ld"), field);
 
   if (suf)
     {
@@ -1156,6 +1153,10 @@ process_line (char *line)
     }
 
   fputs ("\n", stdout);
+
+  if (!num && debug)
+    error (0, 0, _("input line is too short, "
+                   "no numbers found to convert in field %ld"), field);
 }
 
 int
