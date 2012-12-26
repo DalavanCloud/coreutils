@@ -35,6 +35,10 @@
 
 #define BUFFER_SIZE (16 * 1024)
 
+/* Exit code when some numbers fail to convert,
+ * but the user specified --ignore-errors */
+enum { EXIT_CONVERSION_WARNINGS = 2 } ;
+
 enum
 {
   FROM_OPTION = CHAR_MAX + 1,
@@ -49,7 +53,8 @@ enum
   DEBUG_OPTION,
   DEV_DEBUG_OPTION,
   HEADER_OPTION,
-  FORMAT_OPTION
+  FORMAT_OPTION,
+  IGNORE_ERRORS_OPTION
 };
 
 enum scale_type
@@ -115,6 +120,7 @@ static struct option const longopts[] =
   {"-devdebug", no_argument, NULL, DEV_DEBUG_OPTION},
   {"header", optional_argument, NULL, HEADER_OPTION},
   {"format", required_argument, NULL, FORMAT_OPTION},
+  {"ignore-errors", no_argument, NULL, IGNORE_ERRORS_OPTION},
   {GETOPT_HELP_OPTION_DECL},
   {GETOPT_VERSION_OPTION_DECL},
   {NULL, 0, NULL, 0}
@@ -146,6 +152,13 @@ static long int padding_width = 0;
 static const char *format_str = NULL;
 static char *format_str_prefix = NULL;
 static char *format_str_suffix = NULL;
+static int ignore_errors = 0;
+
+/* By default, any conversion error will terminate the
+ * program with exit code 1 .
+ * If set to '0' (=EXIT_OK), conversion errors are reported,
+ * but will not terminate the program */
+static int conv_exit_code = EXIT_FAILURE;
 
 
 /* auto-pad each line based on skipped whitespace */
@@ -584,7 +597,7 @@ simple_strtod_fatal (enum simple_strtod_error err, char const *input_str)
 
     }
 
-  error (EXIT_FAILURE, 0, gettext (msgid), input_str);
+  error (conv_exit_code, 0, gettext (msgid), input_str);
 }
 
 static void
@@ -922,11 +935,17 @@ parse_human_number (const char *str, long double /*output */ *value)
   enum simple_strtod_error e =
     simple_strtod_human (str, &ptr, value, scale_from);
   if (e != SSE_OK && e != SSE_OK_PRECISION_LOSS)
-    simple_strtod_fatal (e, str);
+    {
+      simple_strtod_fatal (e, str);
+      return e;
+    }
 
   if (ptr && *ptr != '\0')
-    error (EXIT_FAILURE, 0, _("invalid suffix in input '%s': '%s'"),
-           str, ptr);
+    {
+      error (conv_exit_code, 0, _("invalid suffix in input '%s': '%s'"),
+             str, ptr);
+      e = SSE_INVALID_SUFFIX;
+    }
   return e;
 }
 
@@ -936,7 +955,7 @@ parse_human_number (const char *str, long double /*output */ *value)
    The number is printed to STDOUT,
    with padding and alignment.
 */
-static void
+static int
 prepare_padded_number (const long double val)
 {
   /* Generate Output */
@@ -946,11 +965,18 @@ prepare_padded_number (const long double val)
   unsigned int x;
   expld (val, 10, &x);
   if (scale_to == scale_none && x > MAX_UNSCALED_DIGITS)
-    error (EXIT_FAILURE, 0, _("value too large to be printed: '%Lg'"
-                              " (consider using --to)"), val);
+    {
+      error (conv_exit_code, 0, _("value too large to be printed: '%Lg'"
+                                  " (consider using --to)"), val);
+      return 0;
+    }
+
   if (x > MAX_ACCEPTABLE_DIGITS - 1)
-    error (EXIT_FAILURE, 0, _("value too large to be printed: '%Lg'"
-                              " (cannot handle values > 999Y)"), val);
+    {
+      error (conv_exit_code, 0, _("value too large to be printed: '%Lg'"
+                                  " (cannot handle values > 999Y)"), val);
+      return 0;
+    }
 
   double_to_human (val, buf, sizeof (buf), scale_to, grouping, _round);
   if (suffix)
@@ -973,9 +999,11 @@ prepare_padded_number (const long double val)
     }
   else
     {
-      setup_padding_buffer (strlen (buf)+1);
+      setup_padding_buffer (strlen (buf) + 1);
       strcpy (padding_buffer, buf);
     }
+
+  return 1;
 }
 
 static void
@@ -994,7 +1022,7 @@ print_padded_number (void)
    Converts the given number to the requested representation,
    and handles automatic suffix addition.
  */
-static void
+static int
 process_suffixed_number (char *text, long double /* output */ *result)
 {
   if (suffix && strlen (text) > strlen (suffix))
@@ -1047,6 +1075,8 @@ process_suffixed_number (char *text, long double /* output */ *result)
     val = (val * from_unit_size) / to_unit_size;
 
   *result = val;
+
+  return (e == SSE_OK || e == SSE_OK_PRECISION_LOSS);
 }
 
 /*
@@ -1139,52 +1169,58 @@ extract_fields (char *line, int _field, char ** /*out */ _prefix,
 /*
    Converts a number in a given line of text.
  */
-static void
+static int
 process_line (char *line)
 {
   char *pre, *num, *suf;
-  long double val=0;
-  int valid_number = 0 ;
+  long double val = 0;
+  int valid_number = 0;
 
   extract_fields (line, field, &pre, &num, &suf);
-  if (!num && debug)
-    error (0, 0, _("input line is too short, "
-                   "no numbers found to convert in field %ld"), field);
+  if (!num)
+    error (conv_exit_code, 0, _("input line is too short, "
+                                "no numbers found to convert in field %ld"),
+           field);
 
   if (num)
     {
-      process_suffixed_number (num, &val);
-      prepare_padded_number (val);
-      valid_number = 1 ;
+      valid_number = process_suffixed_number (num, &val);
+      if (valid_number)
+        valid_number = prepare_padded_number (val);
     }
+
+  if (pre)
+    fputs (pre, stdout);
+
+  if (pre && num)
+    fputc ((delimiter == DELIMITER_DEFAULT) ? ' ' : delimiter, stdout);
 
   if (valid_number)
     {
-      if (pre)
-        fputs (pre, stdout);
-
-      if (pre && num)
-        fputc ((delimiter == DELIMITER_DEFAULT) ? ' ' : delimiter, stdout);
-
       print_padded_number ();
-
-      if (suf)
-        {
-          fputc ((delimiter == DELIMITER_DEFAULT) ? ' ' : delimiter, stdout);
-          fputs (suf, stdout);
-        }
-
     }
   else
     {
-      fputs (line, stdout);
+      if (num)
+        fputs (num, stdout);
     }
+
+  if (suf)
+    {
+      fputc ((delimiter == DELIMITER_DEFAULT) ? ' ' : delimiter, stdout);
+      fputs (suf, stdout);
+    }
+
   fputs ("\n", stdout);
+
+  return valid_number;
 }
 
 int
 main (int argc, char **argv)
 {
+  int valid_numbers = 1;
+
   initialize_main (&argc, &argv);
   set_program_name (argv[0]);
   setlocale (LC_ALL, "");
@@ -1217,7 +1253,8 @@ main (int argc, char **argv)
           break;
 
         case TO_OPTION:
-          scale_to = XARGMATCH ("--to", optarg, scale_to_args, scale_to_types);
+          scale_to =
+            XARGMATCH ("--to", optarg, scale_to_args, scale_to_types);
           break;
 
         case TO_UNIT_OPTION:
@@ -1287,6 +1324,10 @@ main (int argc, char **argv)
           format_str = optarg;
           break;
 
+        case IGNORE_ERRORS_OPTION:
+          ignore_errors = 1;
+          break;
+
         case_GETOPT_HELP_CHAR;
         case_GETOPT_VERSION_CHAR (PROGRAM_NAME, AUTHORS);
 
@@ -1320,13 +1361,16 @@ main (int argc, char **argv)
   setup_padding_buffer (padding_width);
   auto_padding = (padding_width == 0 && delimiter == DELIMITER_DEFAULT);
 
+  if (ignore_errors)
+    conv_exit_code = 0;
+
   if (argc > optind)
     {
       if (debug && header)
         error (0, 0, _("--header ignored with command-line input"));
 
       for (; optind < argc; optind++)
-        process_line (argv[optind]);
+        valid_numbers &= process_line (argv[optind]);
     }
   else
     {
@@ -1341,7 +1385,7 @@ main (int argc, char **argv)
       while (fgets (buf, BUFFER_SIZE, stdin) != NULL)
         {
           chomp (buf);
-          process_line (buf);
+          valid_numbers &= process_line (buf);
         }
 
       if (ferror (stdin))
@@ -1352,5 +1396,9 @@ main (int argc, char **argv)
   free (format_str_prefix);
   free (format_str_suffix);
 
-  exit (EXIT_SUCCESS);
+
+  if (debug && !valid_numbers)
+    error (0, 0, _("failed to convert some of the input numbers"));
+
+  exit (valid_numbers ? EXIT_SUCCESS : EXIT_CONVERSION_WARNINGS);
 }

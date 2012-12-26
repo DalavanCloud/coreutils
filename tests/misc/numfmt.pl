@@ -162,7 +162,9 @@ my @Tests =
      ['delim-3', '--delimiter=" " --from=auto "40M Foo"',{OUT=>'40000000 Foo'}],
      ['delim-4', '--delimiter=: --from=auto 40M:60M',  {OUT=>'40000000:60M'}],
      ['delim-5', '--delimiter=: --field 3 --from=auto 40M:60M',
-             {OUT=>'40M:60M'}],
+             {EXIT=>1},
+             {ERR=>"$prog: input line is too short, no numbers found " .
+                   "to convert in field 3\n"}],
 
      #Fields
      ['field-1', '--field A',
@@ -188,9 +190,8 @@ my @Tests =
              {OUT=>"Hello:40000000:World:90G"}],
 
      # not enough fields - silently ignored
-     ['field-7', '--field 3 --to=si "Hello World"', {OUT=>"Hello World"}],
-     ['field-8', '--field 3 --debug --to=si "Hello World"',
-             {OUT=>"Hello World"},
+     ['field-8', '--field 3 --to=si "Hello World"',
+             {EXIT=>1},
              {ERR=>"$prog: input line is too short, no numbers found " .
                    "to convert in field 3\n"}],
 
@@ -559,9 +560,6 @@ my @Tests =
      ['debug-1.1', '--debug --padding 10 4096', {OUT=>"      4096"}],
      ['debug-2', '--debug --grouping --from=si 4.0K', {OUT=>"4000"},
              {ERR=>"$prog: grouping has no effect in this locale\n"}],
-     ['debug-3', '--debug --field 4 --to=si "A B C"', {OUT=>"A B C"},
-             {ERR => "$prog: input line is too short, " .
-                     "no numbers found to convert in field 4\n"}],
      ['debug-4', '--to=si --debug 12345678901234567890',
              {OUT=>"13E"},
              {ERR=>"$prog: large input value '12345678901234567890':" .
@@ -592,9 +590,6 @@ my @Tests =
              {ERR=>""},
              {ERR_SUBST=>"s/.*//msg"}],
      ['devdebug-7', '---devdebug --suffix=Foo 1234', {OUT=>"1234Foo"},
-             {ERR=>""},
-             {ERR_SUBST=>"s/.*//msg"}],
-     ['devdebug-8', '---devdebug --field 4 --to=si "A B C"', {OUT=>"A B C"},
              {ERR=>""},
              {ERR_SUBST=>"s/.*//msg"}],
      ['devdebug-9', '---devdebug --grouping 10000', {OUT=>"10000"},
