@@ -189,7 +189,7 @@ my @Tests =
      ['field-6', '--delimiter=: --field 2 --from=auto "Hello:40M:World:90G"',
              {OUT=>"Hello:40000000:World:90G"}],
 
-     # not enough fields - silently ignored
+     # not enough fields
      ['field-8', '--field 3 --to=si "Hello World"',
              {EXIT=>1},
              {ERR=>"$prog: input line is too short, no numbers found " .
@@ -667,6 +667,106 @@ my @Tests =
      ['fmt-15', '--format "--%100000f--" --to=si 4200',
                   {OUT=>"--" . " " x 99996 . "4.2K--" }],
 
+
+     ## Check all errors again, this time with --ignore-errors
+     ##  Input will be printed without conversion,
+     ##  and exit code will be 2
+     ['ign-err-1', '--ignore-errors 4Q',
+             {ERR => "$prog: invalid suffix in input: '4Q'\n"},
+             {OUT => "4Q\n"},
+             {EXIT => 2}],
+     ['ign-err-2', '--ignore-errors 4M',
+             {ERR => "$prog: rejecting suffix " .
+             "in input: '4M' (consider using --from)\n"},
+             {OUT => "4M\n"},
+             {EXIT => 2}],
+     ['ign-err-3', '--ignore-errors --from=si 4MQ',
+             {ERR => "$prog: invalid suffix in input '4MQ': 'Q'\n"},
+             {OUT => "4MQ\n"},
+             {EXIT => 2}],
+     ['ign-err-4', '--ignore-errors --suffix=Foo --to=si   7000FooF',
+              {ERR => "$prog: invalid suffix in input: '7000FooF'\n"},
+              {OUT => "7000FooF\n"},
+              {EXIT => 2}],
+     ['ign-err-5', '--ignore-errors --field 3 --from=auto "Hello 40M World 90G"',
+             {ERR => "$prog: invalid number: 'World'\n"},
+             {OUT => "Hello 40M World 90G\n"},
+             {EXIT => 2}],
+     ['ign-err-6', '--ignore-errors --field 3 --to=si "Hello World"',
+             {ERR => "$prog: input line is too short, no numbers found " .
+                     "to convert in field 3\n"},
+             {OUT => "Hello World\n"},
+             {EXIT => 2}],
+     ['ign-err-7', '--ignore-errors --from=si "foo"',
+             {ERR => "$prog: invalid number: 'foo'\n"},
+             {OUT => "foo\n"},
+             {EXIT=> 2}],
+     ['ign-err-8', '--ignore-errors 12M',
+             {ERR => "$prog: rejecting suffix " .
+                     "in input: '12M' (consider using --from)\n"},
+             {OUT => "12M\n"},
+             {EXIT => 2}],
+     ['ign-err-9', '--ignore-errors --from=iec-i 12M',
+             {ERR => "$prog: missing 'i' suffix in input: " .
+                     "'12M' (e.g Ki/Mi/Gi)\n"},
+             {OUT => "12M\n"},
+             {EXIT=>2}],
+     ['ign-err-10','--ignore-errors 10000000000000000000',
+             {ERR => "$prog: value too large to be printed: '1e+19' " .
+                     "(consider using --to)\n"},
+             {OUT => "10000000000000000000\n"},
+             {EXIT=>2}],
+     ['ign-err-11','--ignore-errors --to=si 9876543210000000000000000000',
+             {ERR => "$prog: value too large to be converted: " .
+                     "'9876543210000000000000000000'\n"},
+             {OUT => "9876543210000000000000000000\n"},
+             {EXIT => 2}],
+
+     ## Ignore Errors with multiple conversions
+     ['ign-err-m1', '--ignore-errors --to=si 1000 2000 3000',
+             {OUT => "1.0K\n2.0K\n3.0K"},
+             {EXIT => 0}],
+     ['ign-err-m1.1', '--ignore-errors --to=si',
+             {IN_PIPE => "1000\n2000\n3000\n"},
+             {OUT => "1.0K\n2.0K\n3.0K"},
+             {EXIT => 0}],
+     ['ign-err-m1.3', '--ignore-errors --debug --to=si 1000 2000 3000',
+             {OUT => "1.0K\n2.0K\n3.0K"},
+             {EXIT => 0}],
+     ['ign-err-m2', '--ignore-errors --to=si 1000 Foo 3000',
+             {OUT => "1.0K\nFoo\n3.0K\n"},
+             {ERR => "$prog: invalid number: 'Foo'\n"},
+             {EXIT => 2}],
+     ['ign-err-m2.1', '--ignore-errors --to=si',
+             {IN_PIPE => "1000\nFoo\n3000\n"},
+             {OUT => "1.0K\nFoo\n3.0K\n"},
+             {ERR => "$prog: invalid number: 'Foo'\n"},
+             {EXIT => 2}],
+
+     # --debug will trigger a final warning at EOF
+     ['ign-err-m2.2', '--ignore-errors --debug --to=si 1000 Foo 3000',
+             {OUT => "1.0K\nFoo\n3.0K\n"},
+             {ERR => "$prog: invalid number: 'Foo'\n" .
+                     "$prog: failed to convert some of the input numbers\n"},
+             {EXIT => 2}],
+
+     ['ign-err-m3', '--ignore-errors --field 2 --from=si --to=iec',
+             {IN_PIPE => "A 1K x\nB 2M y\nC 3G z\n"},
+             {OUT => "A 1000 x\nB 2.0M y\nC 2.8G z"},
+             {EXIT => 0}],
+     # invalid input on one of the fields
+     ['ign-err-m3.1', '--ignore-errors --field 2 --from=si --to=iec',
+             {IN_PIPE => "A 1K x\nB Foo y\nC 3G z\n"},
+             {OUT => "A 1000 x\nB Foo y\nC 2.8G z\n"},
+             {ERR => "$prog: invalid number: 'Foo'\n"},
+             {EXIT => 2}],
+     # one of the lines is too short
+     ['ign-err-m3.2', '--ignore-errors --field 2 --from=si --to=iec',
+             {IN_PIPE => "A 1K x\nB\nC 3G z\n"},
+             {OUT => "A 1000 x\nB\nC 2.8G z\n"},
+             {ERR => "$prog: input line is too short, no numbers found " .
+                     "to convert in field 2\n"},
+             {EXIT => 2}],
     );
 
 my @Locale_Tests =
