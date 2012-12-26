@@ -23,8 +23,10 @@
 #include "mbsalign.h"
 #include "argmatch.h"
 #include "error.h"
+#include "quote.h"
 #include "system.h"
 #include "xstrtol.h"
+#include "xstrndup.h"
 
 /* The official name of this program (e.g., no 'g' prefix).  */
 #define PROGRAM_NAME "numfmt"
@@ -46,7 +48,8 @@ enum
   FIELD_OPTION,
   DEBUG_OPTION,
   DEV_DEBUG_OPTION,
-  HEADER_OPTION
+  HEADER_OPTION,
+  FORMAT_OPTION
 };
 
 enum scale_type
@@ -111,6 +114,7 @@ static struct option const longopts[] =
   {"debug", no_argument, NULL, DEBUG_OPTION},
   {"-devdebug", no_argument, NULL, DEV_DEBUG_OPTION},
   {"header", optional_argument, NULL, HEADER_OPTION},
+  {"format", required_argument, NULL, FORMAT_OPTION},
   {GETOPT_HELP_OPTION_DECL},
   {GETOPT_VERSION_OPTION_DECL},
   {NULL, 0, NULL, 0}
@@ -139,6 +143,10 @@ static int grouping = 0;
 static char *padding_buffer = NULL;
 static size_t padding_buffer_size = 0;
 static long int padding_width = 0;
+static const char *format_str = NULL;
+static char *format_str_prefix = NULL;
+static char *format_str_suffix = NULL;
+
 
 /* auto-pad each line based on skipped whitespace */
 static int auto_padding = 0;
@@ -159,6 +167,7 @@ static int dev_debug = 0;
 /* will be set according to the current locale */
 static const char *decimal_point;
 static int decimal_point_length;
+
 
 static inline int
 default_scale_base (enum scale_type scale)
@@ -796,6 +805,104 @@ chomp (char *s)
   return;
 }
 
+/*
+ * Given 'fmt' (a printf(3) compatible format string), extracts the following:
+ *  1. padding (e.g. %20f)
+ *  2. alignment (e.g. %-20f)
+ *  3. grouping (e.g. %'f)
+ *
+ * Only a limited subset of printf(3) syntax is supported.
+ *
+ * NOTES:
+ * 1. This function sets the global variables:
+ *     padding_width, padding_alignment, grouping,
+ *     format_str_prefix, format_str_suffix
+ *
+ * 2. The function aborts on any errors
+ */
+static void
+parse_format_string (char const *fmt)
+{
+  size_t i;
+  size_t prefix_len = 0;
+  size_t suffix_pos;
+  long int pad = 0;
+  char *endptr = NULL;
+
+  for (i = 0; !(fmt[i] == '%' && fmt[i + 1] != '%'); i += (fmt[i] == '%') + 1)
+    {
+      if (!fmt[i])
+        error (EXIT_FAILURE, 0,
+               _("format %s has no %% directive"), quote (fmt));
+      prefix_len++;
+    }
+
+  i++;
+  i += strspn (fmt + i, " ");
+  if (fmt[i] == '\'')
+    {
+      grouping = 1;
+      i++;
+    }
+  i += strspn (fmt + i, " ");
+  pad = strtol (fmt + i, &endptr, 10);
+  if (errno != 0)
+    error (EXIT_FAILURE, 0,
+           _("invalid format %s (width overflow)"), quote (fmt));
+
+  if (endptr != (fmt + i) && pad != 0)
+    {
+      if (pad < 0)
+        {
+          padding_alignment = MBS_ALIGN_LEFT;
+          padding_width = -pad;
+        }
+      else
+        {
+          padding_width = pad;
+        }
+    }
+  i = endptr - fmt;
+
+  if (fmt[i] == '\0')
+    error (EXIT_FAILURE, 0, _("format %s ends in %%"), quote (fmt));
+
+  if (fmt[i] != 'f')
+    error (EXIT_FAILURE, 0, _("invalid format %s,"
+                              " directive must be %%['][-][N]f"),
+           quote (fmt));
+  i++;
+  suffix_pos = i;
+
+  for (; fmt[i] != '\0'; i += (fmt[i] == '%') + 1)
+    if (fmt[i] == '%' && fmt[i + 1] != '%')
+      error (EXIT_FAILURE, 0, _("format %s has too many %% directives"),
+             quote (fmt));
+
+  if (prefix_len)
+    {
+      format_str_prefix = xstrndup (fmt,prefix_len);
+      if (!format_str_prefix)
+        error (EXIT_FAILURE, 0, _("out of memory (requested %zu bytes)"),
+               prefix_len + 1);
+    }
+  if (fmt[suffix_pos] != '\0')
+    {
+      format_str_suffix = strdup (fmt + suffix_pos);
+      if (!format_str_suffix)
+        error (EXIT_FAILURE, 0, _("out of memory (requested %zu bytes)"),
+               strlen (fmt + suffix_pos));
+    }
+
+  if (dev_debug)
+    error (0, 0, _("format String:\n  input: %s\n  grouping: %s\n"
+                   "  padding width: %zu\n  alignment: %s\n"
+                   "  prefix: '%s'\n  suffix: '%s'\n"),
+           quote (fmt), (grouping) ? "yes" : "no",
+           padding_width,
+           (padding_alignment == MBS_ALIGN_LEFT) ? "Left" : "Right",
+           format_str_prefix, format_str_suffix);
+}
 
 /*
    Parses a numeric value (with optional suffix) from a string.
@@ -852,6 +959,9 @@ print_number (const long double val)
     error (0, 0, _("formatting output:\n  value: %Lf\n  humanized: '%s'\n"),
            val, s);
 
+  if (format_str_prefix)
+    fputs (format_str_prefix, stdout);
+
   if (padding_width && strlen (s) < padding_width)
     {
       size_t w = padding_width;
@@ -867,6 +977,9 @@ print_number (const long double val)
     {
       fputs (s, stdout);
     }
+
+  if (format_str_suffix)
+    fputs (format_str_suffix, stdout);
 }
 
 /*
@@ -1106,7 +1219,6 @@ main (int argc, char **argv)
               padding_alignment = MBS_ALIGN_LEFT;
               padding_width = -padding_width;
             }
-          setup_padding_buffer (padding_width);
           break;
 
         case FIELD_OPTION:
@@ -1149,6 +1261,10 @@ main (int argc, char **argv)
             }
           break;
 
+        case FORMAT_OPTION:
+          format_str = optarg;
+          break;
+
         case_GETOPT_HELP_CHAR;
         case_GETOPT_VERSION_CHAR (PROGRAM_NAME, AUTHORS);
 
@@ -1156,8 +1272,6 @@ main (int argc, char **argv)
           usage (EXIT_FAILURE);
         }
     }
-
-  auto_padding = (padding_width == 0 && delimiter == DELIMITER_DEFAULT);
 
   if (grouping)
     {
@@ -1167,10 +1281,21 @@ main (int argc, char **argv)
         error (0, 0, _("--grouping has no effect in this locale"));
     }
 
+  if (format_str != NULL && grouping)
+    error (EXIT_FAILURE, 0, _("--grouping cannot be combined with --format"));
+  if (format_str != NULL && padding_width > 0)
+    error (EXIT_FAILURE, 0, _("--padding cannot be combined with --format"));
+
   /* Warn about no-op */
   if (debug && scale_from == scale_none && scale_to == scale_none
-      && !grouping && (padding_width == 0))
+      && !grouping && (padding_width == 0) && (format_str == NULL))
     error (0, 0, _("no conversion option specified"));
+
+  if (format_str)
+    parse_format_string (format_str);
+
+  setup_padding_buffer (padding_width);
+  auto_padding = (padding_width == 0 && delimiter == DELIMITER_DEFAULT);
 
   if (argc > optind)
     {
@@ -1201,6 +1326,8 @@ main (int argc, char **argv)
     }
 
   free (padding_buffer);
+  free (format_str_prefix);
+  free (format_str_suffix);
 
   exit (EXIT_SUCCESS);
 }

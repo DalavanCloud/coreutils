@@ -608,6 +608,56 @@ my @Tests =
                    "Try '$prog --help' for more information.\n"},
              {EXIT=>1}],
 
+     ## Format string - check error detection
+     ['fmt-err-1', '--format ""',
+             {ERR=>"$prog: format '' has no % directive\n"},
+             {EXIT=>1}],
+     ['fmt-err-2', '--format "hello"',
+             {ERR=>"$prog: format 'hello' has no % directive\n"},
+             {EXIT=>1}],
+     ['fmt-err-3', '--format "hello%"',
+             {ERR=>"$prog: format 'hello%' ends in %\n"},
+             {EXIT=>1}],
+     ['fmt-err-4', '--format "%d"',
+             {ERR=>"$prog: invalid format '%d', " .
+                   "directive must be %['][-][N]f\n"},
+             {EXIT=>1}],
+     ['fmt-err-5', '--format "% -43 f"',
+             {ERR=>"$prog: invalid format '% -43 f', " .
+                   "directive must be %['][-][N]f\n"},
+             {EXIT=>1}],
+     ['fmt-err-6', '--format "%f %f"',
+             {ERR=>"$prog: format '%f %f' has too many % directives\n"},
+             {EXIT=>1}],
+     ['fmt-err-7', '--format "%123456789012345678901234567890f"',
+             {ERR=>"$prog: invalid format '%123456789012345678901234567890f'".
+                   " (width overflow)\n"},
+             {EXIT=>1}],
+     ['fmt-err-8', '--format "%f" --padding 20',
+             {ERR=>"$prog: --padding cannot be combined with --format\n"},
+             {EXIT=>1}],
+     ['fmt-err-9', '--format "%f" --grouping',
+             {ERR=>"$prog: --grouping cannot be combined with --format\n"},
+             {EXIT=>1}],
+
+     ## Format string - check some corner cases
+     ['fmt-1', '--format "%% %f" 5000', {OUT=>"%%5000"}],
+     ['fmt-2', '--format "%f %%" 5000', {OUT=>"5000 %%"}],
+
+     ['fmt-3', '--format "--%f--" 5000000', {OUT=>"--5000000--"}],
+     ['fmt-4', '--format "--%f--" --to=si 5000000', {OUT=>"--5.0M--"}],
+
+     ['fmt-5', '--format "--%10f--" --to=si 5000000',{OUT=>"--      5.0M--"}],
+     ['fmt-6', '--format "--%-10f--" --to=si 5000000',{OUT=>"--5.0M      --"}],
+     ['fmt-7', '--format "--%10f--" 5000000',{OUT=>"--   5000000--"}],
+     ['fmt-8', '--format "--%-10f--" 5000000',{OUT=>"--5000000   --"}],
+
+     # too-short width
+     ['fmt-9', '--format "--%5f--" 5000000',{OUT=>"--5000000--"}],
+
+     # Format + Suffix
+#     ['fmt-10', '--format "--%10f--" --suffix Foo 50',{OUT=>"--     50Foo--"}],
+
     );
 
 my @Locale_Tests =
