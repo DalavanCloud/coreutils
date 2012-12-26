@@ -60,7 +60,7 @@ enum scale_type
 
 static char const *const scale_from_args[] =
 {
-  "none", "auto", "si", "iec", "ieci", NULL
+  "none", "auto", "si", "iec", "iec-i", NULL
 };
 
 static enum scale_type const scale_from_types[] =
@@ -70,7 +70,7 @@ static enum scale_type const scale_from_types[] =
 
 static char const *const scale_to_args[] =
 {
-  "none", "si", "iec", "ieci", NULL
+  "none", "si", "iec", "iec-i", NULL
 };
 
 static enum scale_type const scale_to_types[] =
@@ -748,7 +748,7 @@ UNIT options:\n\
              1K = 1024\n\
              1G = 1048576\n\
              ...\n\
-  ieci       Accept optional two-letter suffix:\n\
+  iec-i      Accept optional two-letter suffix:\n\
              1Ki = 1024\n\
              1Gi = 1048576\n\
              ...\n\
@@ -762,7 +762,7 @@ Examples:\n\
             -> \"1.0K\"\n\
   $ %s --to=iec 2048\n\
            -> \"2.0K\"\n\
-  $ %s --to=ieci 4096\n\
+  $ %s --to=iec-i 4096\n\
            -> \"4.0Ki\"\n\
   $ echo 1K | %s --from=si\n\
            -> \"1000\"\n\
