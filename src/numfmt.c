@@ -1272,14 +1272,6 @@ main (int argc, char **argv)
         }
     }
 
-  if (grouping)
-    {
-      if (scale_to != scale_none)
-        error (EXIT_FAILURE, 0, _("--grouping cannot be combined with --to"));
-      if (debug && (strlen (nl_langinfo (THOUSEP)) == 0))
-        error (0, 0, _("--grouping has no effect in this locale"));
-    }
-
   if (format_str != NULL && grouping)
     error (EXIT_FAILURE, 0, _("--grouping cannot be combined with --format"));
   if (format_str != NULL && padding_width > 0)
@@ -1292,6 +1284,15 @@ main (int argc, char **argv)
 
   if (format_str)
     parse_format_string (format_str);
+
+  if (grouping)
+    {
+      if (scale_to != scale_none)
+        error (EXIT_FAILURE, 0, _("grouping cannot be combined with --to"));
+      if (debug && (strlen (nl_langinfo (THOUSEP)) == 0))
+        error (0, 0, _("grouping has no effect in this locale"));
+    }
+
 
   setup_padding_buffer (padding_width);
   auto_padding = (padding_width == 0 && delimiter == DELIMITER_DEFAULT);

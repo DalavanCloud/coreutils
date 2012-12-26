@@ -127,7 +127,7 @@ my @Tests =
      # "C" locale - no grouping (locale-specific tests, below)
      ['grp-1', '--from=si --grouping 7M',   {OUT=>'7000000'}],
      ['grp-2', '--from=si --to=si --grouping 7M',
-              {ERR => "$prog: --grouping cannot be combined with --to\n"},
+              {ERR => "$prog: grouping cannot be combined with --to\n"},
               {EXIT => '1'}],
 
 
@@ -559,7 +559,7 @@ my @Tests =
      # '--padding' is a valid conversion option - no warning should be printed
      ['debug-1.1', '--debug --padding 10 4096', {OUT=>"      4096"}],
      ['debug-2', '--debug --grouping --from=si 4.0K', {OUT=>"4000"},
-             {ERR=>"$prog: --grouping has no effect in this locale\n"}],
+             {ERR=>"$prog: grouping has no effect in this locale\n"}],
      ['debug-3', '--debug --field 4 --to=si "A B C"', {OUT=>"A B C"},
              {ERR => "$prog: input line is too short, " .
                      "no numbers found to convert in field 4\n"}],
@@ -639,6 +639,11 @@ my @Tests =
      ['fmt-err-9', '--format "%f" --grouping',
              {ERR=>"$prog: --grouping cannot be combined with --format\n"},
              {EXIT=>1}],
+     ['fmt-err-10', '--format "%\'f" --to=si',
+             {ERR=>"$prog: grouping cannot be combined with --to\n"},
+             {EXIT=>1}],
+     ['fmt-err-11', '--debug --format "%\'f" 5000', {OUT=>"5000"},
+             {ERR=>"$prog: grouping has no effect in this locale\n"}],
 
      ## Format string - check some corner cases
      ['fmt-1', '--format "%% %f" 5000', {OUT=>"%%5000"}],
@@ -698,7 +703,7 @@ my @Locale_Tests =
              {ENV=>"LC_ALL=$locale"}],
      ['lcl-fmt-3', '--format "--%\'-10f--" 50000',{OUT=>"--50 000    --"},
              {ENV=>"LC_ALL=$locale"}],
-     ['lcl-fmt-4', '--format "--%\'-10f--" --to=si 5000000',
+     ['lcl-fmt-4', '--format "--%-10f--" --to=si 5000000',
              {OUT=>"--5,0M      --"},
              {ENV=>"LC_ALL=$locale"}],
 
