@@ -149,9 +149,9 @@ my @Tests =
 
      # Padding + suffix
      ['pad-7', '--padding=10 --suffix=foo --to=si 50000',
-             {OUT=>'       50Kfoo'}],
+             {OUT=>'    50Kfoo'}],
      ['pad-8', '--padding=-10 --suffix=foo --to=si 50000',
-             {OUT=>'50K       foo'}],
+             {OUT=>'50Kfoo    '}],
 
 
      # Delimiters
@@ -656,7 +656,17 @@ my @Tests =
      ['fmt-9', '--format "--%5f--" 5000000',{OUT=>"--5000000--"}],
 
      # Format + Suffix
-#     ['fmt-10', '--format "--%10f--" --suffix Foo 50',{OUT=>"--     50Foo--"}],
+     ['fmt-10', '--format "--%10f--" --suffix Foo 50', {OUT=>"--     50Foo--"}],
+     ['fmt-11', '--format "--%-10f--" --suffix Foo 50',{OUT=>"--50Foo     --"}],
+
+     # Grouping in C locale - no grouping effect
+     ['fmt-12', '--format "%\'f" 50000',{OUT=>"50000"}],
+     ['fmt-13', '--format "%\'10f" 50000', {OUT=>"     50000"}],
+     ['fmt-14', '--format "%\'-10f" 50000',{OUT=>"50000     "}],
+
+     # Very large format strings
+     ['fmt-15', '--format "--%100000f--" --to=si 4200',
+                  {OUT=>"--" . " " x 99996 . "4.2K--" }],
 
     );
 
@@ -680,6 +690,18 @@ my @Locale_Tests =
 
      ['lcl-dbl-to-human-1', '--to=si 1100', {OUT=>"1,1K"},
              {ENV=>"LC_ALL=$locale"}],
+
+     # Format + Grouping
+     ['lcl-fmt-1', '--format "%\'f" 50000',{OUT=>"50 000"},
+             {ENV=>"LC_ALL=$locale"}],
+     ['lcl-fmt-2', '--format "--%\'10f--" 50000', {OUT=>"--    50 000--"},
+             {ENV=>"LC_ALL=$locale"}],
+     ['lcl-fmt-3', '--format "--%\'-10f--" 50000',{OUT=>"--50 000    --"},
+             {ENV=>"LC_ALL=$locale"}],
+     ['lcl-fmt-4', '--format "--%\'-10f--" --to=si 5000000',
+             {OUT=>"--5,0M      --"},
+             {ENV=>"LC_ALL=$locale"}],
+
   );
 push @Tests, @Locale_Tests if $locale ne "C";
 

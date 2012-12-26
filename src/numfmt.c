@@ -587,9 +587,9 @@ simple_strtod_fatal (enum simple_strtod_error err, char const *input_str)
   error (EXIT_FAILURE, 0, gettext (msgid), input_str);
 }
 
-static char *
+static void
 double_to_human (long double val,
-                 char *buf, size_t buf_size,
+                 char /* output */ *buf, size_t buf_size,
                  enum scale_type scale, int group, enum round_type round)
 {
   if (dev_debug)
@@ -607,7 +607,7 @@ double_to_human (long double val,
       if (i < 0 || i >= (int) buf_size)
         error (EXIT_FAILURE, 0,
                _("failed to prepare value '%Lf' for printing"), val);
-      return buf;
+      return;
     }
 
   /* Scaling requested by user */
@@ -660,7 +660,7 @@ double_to_human (long double val,
   if (dev_debug)
     error (0, 0, _("  returning value: '%s'\n"), buf);
 
-  return buf;
+  return;
 }
 
 /* Convert a string of decimal digits, N_STRING, with an optional suffinx
@@ -881,7 +881,7 @@ parse_format_string (char const *fmt)
 
   if (prefix_len)
     {
-      format_str_prefix = xstrndup (fmt,prefix_len);
+      format_str_prefix = xstrndup (fmt, prefix_len);
       if (!format_str_prefix)
         error (EXIT_FAILURE, 0, _("out of memory (requested %zu bytes)"),
                prefix_len + 1);
@@ -952,20 +952,21 @@ print_number (const long double val)
     error (EXIT_FAILURE, 0, _("value too large to be printed: '%Lg'"
                               " (cannot handle values > 999Y)"), val);
 
-  char *s = double_to_human (val, buf, sizeof (buf),
-                             scale_to, grouping, _round);
+  double_to_human (val, buf, sizeof (buf), scale_to, grouping, _round);
+  if (suffix)
+    strncat (buf, suffix, sizeof (buf));
 
   if (dev_debug)
     error (0, 0, _("formatting output:\n  value: %Lf\n  humanized: '%s'\n"),
-           val, s);
+           val, buf);
 
   if (format_str_prefix)
     fputs (format_str_prefix, stdout);
 
-  if (padding_width && strlen (s) < padding_width)
+  if (padding_width && strlen (buf) < padding_width)
     {
       size_t w = padding_width;
-      mbsalign (s, padding_buffer, padding_buffer_size, &w,
+      mbsalign (buf, padding_buffer, padding_buffer_size, &w,
                 padding_alignment, MBA_UNIBYTE_ONLY);
 
       if (dev_debug)
@@ -975,7 +976,7 @@ print_number (const long double val)
     }
   else
     {
-      fputs (s, stdout);
+      fputs (buf, stdout);
     }
 
   if (format_str_suffix)
@@ -1039,9 +1040,6 @@ process_suffixed_number (char *text)
     val = (val * from_unit_size) / to_unit_size;
 
   print_number (val);
-
-  if (suffix)
-    fputs (suffix, stdout);
 }
 
 /*
