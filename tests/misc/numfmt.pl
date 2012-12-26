@@ -595,6 +595,15 @@ my @Tests =
      ['devdebug-9', '---devdebug --grouping 10000', {OUT=>"10000"},
              {ERR=>""},
              {ERR_SUBST=>"s/.*//msg"}],
+     ['devdebug-10', '---devdebug --format %f 10000', {OUT=>"10000"},
+             {ERR=>""},
+             {ERR_SUBST=>"s/.*//msg"}],
+     ['devdebug-11', '---devdebug --format "%\'-10f" 10000',{OUT=>"10000     "},
+             {ERR=>""},
+             {ERR_SUBST=>"s/.*//msg"}],
+     ['devdebug-12', '---devdebug --field 2 A',{OUT=>""},
+             {ERR=>""}, {EXIT=>1},
+             {ERR_SUBST=>"s/.*//msg"}],
 
      # Invalid parameters
      ['help-1', '--foobar',
