@@ -174,7 +174,6 @@ my @Tests =
      ['field-2', '--field 2 --from=auto "Hello 40M World 90G"',
              {OUT=>'Hello 40000000 World 90G'}],
      ['field-3', '--field 3 --from=auto "Hello 40M World 90G"',
-             {OUT=>"Hello 40M "},
              {ERR=>"$prog: invalid number: 'World'\n"},
              {EXIT => 1},],
      # Last field - no text after number

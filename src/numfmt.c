@@ -937,7 +937,7 @@ parse_human_number (const char *str, long double /*output */ *value)
    with padding and alignment.
 */
 static void
-print_number (const long double val)
+prepare_padded_number (const long double val)
 {
   /* Generate Output */
   char buf[128];
@@ -960,8 +960,6 @@ print_number (const long double val)
     error (0, 0, _("formatting output:\n  value: %Lf\n  humanized: '%s'\n"),
            val, buf);
 
-  if (format_str_prefix)
-    fputs (format_str_prefix, stdout);
 
   if (padding_width && strlen (buf) < padding_width)
     {
@@ -972,12 +970,21 @@ print_number (const long double val)
       if (dev_debug)
         error (0, 0, _("  After padding: '%s'\n"), padding_buffer);
 
-      fputs (padding_buffer, stdout);
     }
   else
     {
-      fputs (buf, stdout);
+      setup_padding_buffer (strlen (buf)+1);
+      strcpy (padding_buffer, buf);
     }
+}
+
+static void
+print_padded_number (void)
+{
+  if (format_str_prefix)
+    fputs (format_str_prefix, stdout);
+
+  fputs (padding_buffer, stdout);
 
   if (format_str_suffix)
     fputs (format_str_suffix, stdout);
@@ -988,7 +995,7 @@ print_number (const long double val)
    and handles automatic suffix addition.
  */
 static void
-process_suffixed_number (char *text)
+process_suffixed_number (char *text, long double /* output */ *result)
 {
   if (suffix && strlen (text) > strlen (suffix))
     {
@@ -1039,7 +1046,7 @@ process_suffixed_number (char *text)
   if (from_unit_size != 1 || to_unit_size != 1)
     val = (val * from_unit_size) / to_unit_size;
 
-  print_number (val);
+  *result = val;
 }
 
 /*
@@ -1136,27 +1143,43 @@ static void
 process_line (char *line)
 {
   char *pre, *num, *suf;
+  long double val=0;
+  int valid_number = 0 ;
+
   extract_fields (line, field, &pre, &num, &suf);
-  if (pre)
-    fputs (pre, stdout);
-
-  if (pre && num)
-    fputc ((delimiter == DELIMITER_DEFAULT) ? ' ' : delimiter, stdout);
-
-  if (num)
-    process_suffixed_number (num);
-
-  if (suf)
-    {
-      fputc ((delimiter == DELIMITER_DEFAULT) ? ' ' : delimiter, stdout);
-      fputs (suf, stdout);
-    }
-
-  fputs ("\n", stdout);
-
   if (!num && debug)
     error (0, 0, _("input line is too short, "
                    "no numbers found to convert in field %ld"), field);
+
+  if (num)
+    {
+      process_suffixed_number (num, &val);
+      prepare_padded_number (val);
+      valid_number = 1 ;
+    }
+
+  if (valid_number)
+    {
+      if (pre)
+        fputs (pre, stdout);
+
+      if (pre && num)
+        fputc ((delimiter == DELIMITER_DEFAULT) ? ' ' : delimiter, stdout);
+
+      print_padded_number ();
+
+      if (suf)
+        {
+          fputc ((delimiter == DELIMITER_DEFAULT) ? ' ' : delimiter, stdout);
+          fputs (suf, stdout);
+        }
+
+    }
+  else
+    {
+      fputs (line, stdout);
+    }
+  fputs ("\n", stdout);
 }
 
 int
