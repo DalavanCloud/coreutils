@@ -459,9 +459,11 @@ simple_strtod_float (const char *input_str,
       int exponent = ptr2 - *ptr;       /* number of digits in the fractions */
       val_frac = ((long double) val_frac) / powerld (10, exponent);
 
-      *value += val_frac;
+      if (value)
+        *value += val_frac;
 
-      *have_fractions = 1;
+      if (have_fractions)
+        *have_fractions = 1;
 
       *ptr = ptr2;
     }
@@ -668,7 +670,7 @@ double_to_human (long double val,
             val, suffix_power_character (power));
 
   if (scale == scale_IEC_I && power > 0)
-    strncat (buf, "i", buf_size);
+    strncat (buf, "i", buf_size - strlen (buf) - 1);
 
   if (dev_debug)
     error (0, 0, _("  returning value: '%s'\n"), buf);
@@ -1009,7 +1011,7 @@ prepare_padded_number (const long double val)
 
   double_to_human (val, buf, sizeof (buf), scale_to, grouping, _round);
   if (suffix)
-    strncat (buf, suffix, sizeof (buf));
+    strncat (buf, suffix, sizeof (buf) - strlen (buf) -1);
 
   if (dev_debug)
     error (0, 0, _("formatting output:\n  value: %Lf\n  humanized: '%s'\n"),
