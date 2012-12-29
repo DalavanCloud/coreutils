@@ -126,7 +126,7 @@ static struct option const longopts[] =
   {NULL, 0, NULL, 0}
 };
 
-/* If delimtier has this value, blanks separate fields.  */
+/* If delimiter has this value, blanks separate fields.  */
 enum { DELIMITER_DEFAULT = CHAR_MAX + 1 };
 
 /* Maximum number of digits we can safely handle
@@ -296,7 +296,7 @@ powerld (long double base, unsigned int x)
 /* scales down 'val', returns 'updated val' and 'x', such that
  *   val*base^X = original val
  *   Similar to "frexpl(3)" but without requiring 'libm',
- *   allowing only integer scale, limited functionlity and error checking.*/
+ *   allowing only integer scale, limited functionality and error checking.*/
 static long double
 expld (long double val, unsigned int base, unsigned int /*output */ *x)
 {
@@ -312,7 +312,7 @@ expld (long double val, unsigned int base, unsigned int /*output */ *x)
 }
 
 /* EXTREMELY limited 'round' - without 'libm' .
- * Assumes only positive, small  values */
+ * Assumes only positive, small values */
 static inline int
 simple_round_nearest (long double val)
 {
@@ -320,7 +320,7 @@ simple_round_nearest (long double val)
 }
 
 /* EXTREMELY limited 'floor' - without 'libm' .
- * Assumes only positive, small  values */
+ * Assumes only positive, small values */
 static inline int
 simple_round_floor (long double val)
 {
@@ -328,7 +328,7 @@ simple_round_floor (long double val)
 }
 
 /* EXTREMELY limited 'ceil' - without 'libm' .
- * Assumes only positive, small  values */
+ * Assumes only positive, small values */
 static inline int
 simple_round_ceiling (long double val)
 {
@@ -387,7 +387,7 @@ enum simple_strtod_error
 
 static enum simple_strtod_error
 simple_strtod_int (const char *input_str,
-                   char /*output*/ **ptr, /*required, unlike in stdtod */
+                   char /*output*/ **ptr, /*required, unlike in strtod */
                    long double /* output */ *value)
 {
   enum simple_strtod_error e = SSE_OK;
@@ -428,7 +428,7 @@ simple_strtod_int (const char *input_str,
  */
 static enum simple_strtod_error
 simple_strtod_float (const char *input_str,
-                   char* /*output*/ *ptr, /*required, unlike in stdtod */
+                   char* /*output*/ *ptr, /*required, unlike in strtod */
                    long double /*output */ *value,
                    int /*output*/ *have_fractions)
 {
@@ -454,7 +454,7 @@ simple_strtod_float (const char *input_str,
       if (e2 != SSE_OK && e2 != SSE_OK_PRECISION_LOSS)
         return e2;
       if (e2 == SSE_OK_PRECISION_LOSS)
-        e = e2;                 /* propegate warning */
+        e = e2;                 /* propagate warning */
 
       int exponent = ptr2 - *ptr;       /* number of digits in the fractions */
       val_frac = ((long double) val_frac) / powerld (10, exponent);
@@ -472,7 +472,7 @@ simple_strtod_float (const char *input_str,
 
 static enum simple_strtod_error
 simple_strtod_human (const char *input_str,
-              char* /*output*/ *ptr, /*required, unlike in stdtod */
+              char* /*output*/ *ptr, /*required, unlike in strtod */
               long double /*output*/ *value, /* required */
               enum scale_type allowed_scaling)
 {
@@ -482,7 +482,7 @@ simple_strtod_human (const char *input_str,
   int scale_base = default_scale_base (allowed_scaling);
 
   if (dev_debug)
-    error (0, 0, _("simple_stdtod_human:\n  input string: '%s'\n  "
+    error (0, 0, _("simple_strtod_human:\n  input string: '%s'\n  "
                    "locale decimal-point: '%s'\n"), input_str, decimal_point);
 
   enum simple_strtod_error e =
@@ -658,7 +658,7 @@ double_to_human (long double val,
     val /= 10;
 
   /* should "7.0" be printed as "7" ?
-   * if removing the ".0" is preffered, enable the fourth condition */
+   * if removing the ".0" is preferred, enable the fourth condition */
   int show_decimal_point = (val != 0) && (val < 10) && (power > 0);
   /* && (val>simple_round_floor (val))) */
 
@@ -678,7 +678,7 @@ double_to_human (long double val,
   return;
 }
 
-/* Convert a string of decimal digits, N_STRING, with an optional suffinx
+/* Convert a string of decimal digits, N_STRING, with an optional suffix
    to an integral value.  Upon successful conversion,
    return that value.  If it cannot be converted, give a diagnostic and exit.
 */
@@ -798,7 +798,7 @@ Optional width value (%10f) will pad output. Optional negative width values\n\
 \n\
 Exit status is 0 if all input numbers were successfully converted.\n\
 By default, %s will stop at the first conversion error with exit status 1.\n\
-When --ignore-errors is used, %s will not stop at convesion errors, and will\n\
+When --ignore-errors is used, %s will not stop at conversion errors, and will\n\
 exit with status 0 if all numbers were successfully converted, status 1 on \n\
 critical errors, or status 2 if some numbers were not converted successfully.\n\
 \n\
@@ -832,7 +832,7 @@ Examples:\n\
   exit (status);
 }
 
-/* Finds newline chacaters in a string, and replaces them with NULL */
+/* Finds newline characters in a string, and replaces them with NUL */
 static inline void
 chomp (char *s)
 {
