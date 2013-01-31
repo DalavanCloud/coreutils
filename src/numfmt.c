@@ -15,6 +15,7 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #include <config.h>
+#include <float.h>
 #include <getopt.h>
 #include <stdio.h>
 #include <sys/types.h>
@@ -301,10 +302,14 @@ static long double
 expld (long double val, unsigned int base, unsigned int /*output */ *x)
 {
   unsigned int power = 0;
-  while (val >= base)
+
+  if (val >= -LDBL_MAX && val <= LDBL_MAX)
     {
-      ++power;
-      val /= base;
+      while (val >= base)
+        {
+          ++power;
+          val /= base;
+        }
     }
   if (x)
     *x = power;
