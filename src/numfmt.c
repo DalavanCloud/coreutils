@@ -688,15 +688,15 @@ double_to_human (long double val,
    return that value.  If it cannot be converted, give a diagnostic and exit.
 */
 static uintmax_t
-string_to_integer (const char *n_string)
+unit_to_umax (const char *n_string)
 {
   strtol_error s_err;
-  char *ptr = NULL;
+  char *end = NULL;
   uintmax_t n;
 
-  s_err = xstrtoumax (n_string, &ptr, 10, &n, "KMGTPEZY");
+  s_err = xstrtoumax (n_string, &end, 10, &n, "KMGTPEZY");
 
-  if (s_err != LONGINT_OK || *ptr != '\0')
+  if (s_err != LONGINT_OK || *end || n == 0)
     error (EXIT_FAILURE, 0, _("invalid unit size: '%s'"), n_string);
 
   return n;
@@ -1284,7 +1284,7 @@ main (int argc, char **argv)
           break;
 
         case FROM_UNIT_OPTION:
-          from_unit_size = string_to_integer (optarg);
+          from_unit_size = unit_to_umax (optarg);
           break;
 
         case TO_OPTION:
@@ -1293,7 +1293,7 @@ main (int argc, char **argv)
           break;
 
         case TO_UNIT_OPTION:
-          to_unit_size = string_to_integer (optarg);
+          to_unit_size = unit_to_umax (optarg);
           break;
 
         case ROUND_OPTION:

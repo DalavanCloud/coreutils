@@ -78,6 +78,12 @@ my @Tests =
      ['unit-8', '--from-unit=1234567890123456789012345 --to=iec 30',
              {ERR => "$prog: invalid unit size: '1234567890123456789012345'\n"},
              {EXIT => '1'}],
+     ['unit-9', '--from-unit=0 1',
+             {ERR => "$prog: invalid unit size: '0'\n"},
+             {EXIT => '1'}],
+     ['unit-10', '--to-unit=0 1',
+             {ERR => "$prog: invalid unit size: '0'\n"},
+             {EXIT => '1'}],
 
      # Test Suffix logic
      ['suf-1', '4000',    {OUT=>'4000'}],
