@@ -34,8 +34,6 @@
 
 #define AUTHORS proper_name ("Assaf Gordon")
 
-#define BUFFER_SIZE (16 * 1024)
-
 /* Exit code when some numbers fail to convert,
    but the user specified --ignore-errors.  */
 enum { EXIT_CONVERSION_WARNINGS = 2 };
@@ -861,22 +859,6 @@ Examples:\n\
   exit (status);
 }
 
-/* Find newline characters in a string, and replaces them with NUL.  */
-static inline void
-chomp (char *s)
-{
-  while (*s != 0)
-    {
-      if (*s == '\n' || *s == '\r')
-        {
-          *s = 0;
-          return;
-        }
-      ++s;
-    }
-  return;
-}
-
 /* Given 'fmt' (a printf(3) compatible format string), extracts the following:
     1. padding (e.g. %20f)
     2. alignment (e.g. %-20f)
@@ -1416,19 +1398,21 @@ main (int argc, char **argv)
     }
   else
     {
-      char buf[BUFFER_SIZE + 1];
+      char *line = NULL;
+      size_t line_allocated = 0;
+      ssize_t len;
 
-      /* FIXME: check if the line is too long,
-         'buf' doesn't contain a CRLF, and so this isn't
-         the entire line.  */
-      while (header-- && fgets (buf, BUFFER_SIZE, stdin) != NULL)
-        fputs (buf, stdout);
+      while (header-- && getline (&line, &line_allocated, stdin) > 0)
+        fputs (line, stdout);
 
-      while (fgets (buf, BUFFER_SIZE, stdin) != NULL)
+      while ((len = getline (&line, &line_allocated, stdin)) > 0)
         {
-          chomp (buf);
-          valid_numbers &= process_line (buf);
+          if (line[len - 1] == '\n')
+            line[len - 1] = '\0';
+          valid_numbers &= process_line (line);
         }
+
+      IF_LINT (free (line));
 
       if (ferror (stdin))
         error (0, errno, _("error reading input"));
