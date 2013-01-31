@@ -38,8 +38,11 @@ my @Tests =
      ['5', '--from=auto 1Ki',  {OUT => "1024"}],
      ['5.1', '--from=iec-i 1Ki',  {OUT => "1024"}],
 
-     ['6', {IN_PIPE => "1234"},            {OUT => "1234"}],
-     ['7', '--from=si', {IN_PIPE => "2K"}, {OUT => "2000"}],
+     ['6', {IN_PIPE => "1234\n"},            {OUT => "1234"}],
+     ['7', '--from=si', {IN_PIPE => "2K\n"}, {OUT => "2000"}],
+     ['7a', '--ignore-errors', {IN_PIPE => "no_NL"}, {OUT => "no_NL"},
+              {ERR => "$prog: invalid number: 'no_NL'\n"},
+              {EXIT => '2'}],
 
      ['8',  '--to=si 2000',                   {OUT => "2.0K"}],
      ['9',  '--to=si 2001',                   {OUT => "2.1K"}],

@@ -1192,9 +1192,10 @@ extract_fields (char *line, int _field,
 }
 
 
-/* Convert a number in a given line of text.  */
+/* Convert a number in a given line of text.
+   NEWLINE specifies whether to output a '\n' for this "line".  */
 static int
-process_line (char *line)
+process_line (char *line, bool newline)
 {
   char *pre, *num, *suf;
   long double val = 0;
@@ -1235,7 +1236,8 @@ process_line (char *line)
       fputs (suf, stdout);
     }
 
-  fputs ("\n", stdout);
+  if (newline)
+    putchar ('\n');
 
   return valid_number;
 }
@@ -1394,7 +1396,7 @@ main (int argc, char **argv)
         error (0, 0, _("--header ignored with command-line input"));
 
       for (; optind < argc; optind++)
-        valid_numbers &= process_line (argv[optind]);
+        valid_numbers &= process_line (argv[optind], true);
     }
   else
     {
@@ -1407,9 +1409,10 @@ main (int argc, char **argv)
 
       while ((len = getline (&line, &line_allocated, stdin)) > 0)
         {
-          if (line[len - 1] == '\n')
+          bool newline = line[len - 1] == '\n';
+          if (newline)
             line[len - 1] = '\0';
-          valid_numbers &= process_line (line);
+          valid_numbers &= process_line (line, newline);
         }
 
       IF_LINT (free (line));
