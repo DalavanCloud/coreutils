@@ -724,8 +724,8 @@ Usage: %s [OPTIONS] [NUMBER]\n\
           program_name);
       fputs (_("\
 Reformat NUMBER(s) from stdin or command arguments.\n\
-\n\
 "), stdout);
+      emit_mandatory_arg_note ();
       fputs (_("\
   --from=UNIT     auto-scale input numbers to UNITs. Default is 'none'.\n\
                   See UNIT below.\n\
