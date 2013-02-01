@@ -34,8 +34,7 @@
 
 #define AUTHORS proper_name ("Assaf Gordon")
 
-/* Exit code when some numbers fail to convert,
-   but the user specified --ignore-errors.  */
+/* Exit code when some numbers fail to convert.  */
 enum { EXIT_CONVERSION_WARNINGS = 2 };
 
 enum
@@ -53,7 +52,7 @@ enum
   DEV_DEBUG_OPTION,
   HEADER_OPTION,
   FORMAT_OPTION,
-  IGNORE_ERRORS_OPTION
+  INVALID_OPTION
 };
 
 enum scale_type
@@ -103,6 +102,25 @@ static enum round_type const round_types[] =
   round_ceiling, round_floor, round_nearest
 };
 
+
+enum inval_type
+{
+  inval_abort,
+  inval_fail,
+  inval_warn,
+  inval_ignore
+};
+
+static char const *const inval_args[] =
+{
+  "abort", "fail", "warn", "ignore", NULL
+};
+
+static enum inval_type const inval_types[] =
+{
+  inval_abort, inval_fail, inval_warn, inval_ignore
+};
+
 static struct option const longopts[] =
 {
   {"from", required_argument, NULL, FROM_OPTION},
@@ -119,7 +137,7 @@ static struct option const longopts[] =
   {"-devdebug", no_argument, NULL, DEV_DEBUG_OPTION},
   {"header", optional_argument, NULL, HEADER_OPTION},
   {"format", required_argument, NULL, FORMAT_OPTION},
-  {"ignore-errors", no_argument, NULL, IGNORE_ERRORS_OPTION},
+  {"invalid", required_argument, NULL, INVALID_OPTION},
   {GETOPT_HELP_OPTION_DECL},
   {GETOPT_VERSION_OPTION_DECL},
   {NULL, 0, NULL, 0}
@@ -141,6 +159,7 @@ enum { MAX_ACCEPTABLE_DIGITS = 27 };
 static enum scale_type scale_from = scale_none;
 static enum scale_type scale_to = scale_none;
 static enum round_type _round = round_ceiling;
+static enum inval_type _invalid = inval_abort;
 static const char *suffix = NULL;
 static uintmax_t from_unit_size = 1;
 static uintmax_t to_unit_size = 1;
@@ -151,12 +170,9 @@ static long int padding_width = 0;
 static const char *format_str = NULL;
 static char *format_str_prefix = NULL;
 static char *format_str_suffix = NULL;
-static int ignore_errors = 0;
 
-/* By default, any conversion error will terminate the program.
-   If set to '0' (=EXIT_OK), conversion errors are reported,
-   but will not terminate the program.  */
-static int conv_exit_code = EXIT_FAILURE;
+/* By default, any conversion error will terminate the program.  */
+static int conv_exit_code = EXIT_CONVERSION_WARNINGS;
 
 
 /* auto-pad each line based on skipped whitespace.  */
@@ -640,7 +656,8 @@ simple_strtod_fatal (enum simple_strtod_error err, char const *input_str)
 
     }
 
-  error (conv_exit_code, 0, gettext (msgid), input_str);
+  if (_invalid != inval_ignore)
+    error (conv_exit_code, 0, gettext (msgid), input_str);
 }
 
 /* Convert VAL to a human format string in BUF.  */
@@ -789,9 +806,8 @@ Reformat NUMBER(s) from stdin or command arguments.\n\
   -d, --delimiter=X  use X instead of whitespace for field delimiter\n\
   --format=FORMAT use printf style floating-point FORMAT.\n\
                   See FORMAT below for details.\n\
-  --ignore-errors ignore input errors and continue.\n\
-                  Invalid input will be printed as-is without conversion.\n\
-                  See EXIT CODE below for details.\n\
+  --invalid=MODE  failure mode for invalid numbers: MODE can be:\n\
+                  abort (the default), fail, warn, ignore.\n\
   --debug         print warnings about invalid input.\n\
   \n\
 "), stdout);
@@ -835,12 +851,13 @@ Optional width value (%10f) will pad output. Optional negative width values\n\
       printf (_("\
 \n\
 Exit status is 0 if all input numbers were successfully converted.\n\
-By default, %s will stop at the first conversion error with exit status 1.\n\
-When --ignore-errors is used, %s will not stop at conversion errors, and will\n\
-exit with status 0 if all numbers were successfully converted, status 1 on \n\
-critical errors, or status 2 if some numbers were not converted successfully.\n\
+By default, %s will stop at the first conversion error with exit status 2.\n\
+With --invalid='fail' a warning is printed for each conversion error\n\
+and the exit status is 2.  With --invalid='warn' each conversion error is\n\
+diagnosed, but the exit status is 0.  With --invalid='ignore' conversion\n\
+errors are not diagnosed and the exit status is 0.\n\
 \n\
-"), program_name, program_name);
+"), program_name);
 
 
 
@@ -990,8 +1007,9 @@ parse_human_number (const char *str, long double /*output */ *value)
 
   if (ptr && *ptr != '\0')
     {
-      error (conv_exit_code, 0, _("invalid suffix in input '%s': '%s'"),
-             str, ptr);
+      if (_invalid != inval_ignore)
+        error (conv_exit_code, 0, _("invalid suffix in input '%s': '%s'"),
+               str, ptr);
       e = SSE_INVALID_SUFFIX;
     }
   return e;
@@ -1011,15 +1029,17 @@ prepare_padded_number (const long double val)
   expld (val, 10, &x);
   if (scale_to == scale_none && x > MAX_UNSCALED_DIGITS)
     {
-      error (conv_exit_code, 0, _("value too large to be printed: '%Lg'"
-                                  " (consider using --to)"), val);
+      if (_invalid != inval_ignore)
+        error (conv_exit_code, 0, _("value too large to be printed: '%Lg'"
+                                    " (consider using --to)"), val);
       return 0;
     }
 
   if (x > MAX_ACCEPTABLE_DIGITS - 1)
     {
-      error (conv_exit_code, 0, _("value too large to be printed: '%Lg'"
-                                  " (cannot handle values > 999Y)"), val);
+      if (_invalid != inval_ignore)
+        error (conv_exit_code, 0, _("value too large to be printed: '%Lg'"
+                                    " (cannot handle values > 999Y)"), val);
       return 0;
     }
 
@@ -1214,8 +1234,9 @@ process_line (char *line, bool newline)
 
   extract_fields (line, field, &pre, &num, &suf);
   if (!num)
-    error (conv_exit_code, 0, _("input line is too short, "
-                                "no numbers found to convert in field %ld"),
+    if (_invalid != inval_ignore)
+      error (conv_exit_code, 0, _("input line is too short, "
+                                  "no numbers found to convert in field %ld"),
            field);
 
   if (num)
@@ -1361,8 +1382,8 @@ main (int argc, char **argv)
           format_str = optarg;
           break;
 
-        case IGNORE_ERRORS_OPTION:
-          ignore_errors = 1;
+        case INVALID_OPTION:
+          _invalid = XARGMATCH ("--invalid", optarg, inval_args, inval_types);
           break;
 
           case_GETOPT_HELP_CHAR;
@@ -1398,7 +1419,7 @@ main (int argc, char **argv)
   setup_padding_buffer (padding_width);
   auto_padding = (padding_width == 0 && delimiter == DELIMITER_DEFAULT);
 
-  if (ignore_errors)
+  if (_invalid != inval_abort)
     conv_exit_code = 0;
 
   if (argc > optind)
@@ -1440,5 +1461,9 @@ main (int argc, char **argv)
   if (debug && !valid_numbers)
     error (0, 0, _("failed to convert some of the input numbers"));
 
-  exit (valid_numbers ? EXIT_SUCCESS : EXIT_CONVERSION_WARNINGS);
+  int exit_status = EXIT_SUCCESS;
+  if (!valid_numbers && _invalid != inval_warn && _invalid != inval_ignore)
+    exit_status = EXIT_CONVERSION_WARNINGS;
+
+  exit (exit_status);
 }

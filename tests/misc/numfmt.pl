@@ -40,7 +40,7 @@ my @Tests =
 
      ['6', {IN_PIPE => "1234\n"},            {OUT => "1234"}],
      ['7', '--from=si', {IN_PIPE => "2K\n"}, {OUT => "2000"}],
-     ['7a', '--ignore-errors', {IN_PIPE => "no_NL"}, {OUT => "no_NL"},
+     ['7a', '--invalid=fail', {IN_PIPE => "no_NL"}, {OUT => "no_NL"},
               {ERR => "$prog: invalid number: 'no_NL'\n"},
               {EXIT => '2'}],
 
@@ -96,28 +96,28 @@ my @Tests =
      ['suf-1', '4000',    {OUT=>'4000'}],
      ['suf-2', '4Q',
              {ERR => "$prog: invalid suffix in input: '4Q'\n"},
-             {EXIT => '1'}],
+             {EXIT => '2'}],
      ['suf-2.1', '4M',
              {ERR => "$prog: rejecting suffix " .
              "in input: '4M' (consider using --from)\n"},
-             {EXIT => '1'}],
+             {EXIT => '2'}],
      ['suf-3', '--from=si 4M',  {OUT=>'4000000'}],
      ['suf-4', '--from=si 4Q',
              {ERR => "$prog: invalid suffix in input: '4Q'\n"},
-             {EXIT => '1'}],
+             {EXIT => '2'}],
      ['suf-5', '--from=si 4MQ',
              {ERR => "$prog: invalid suffix in input '4MQ': 'Q'\n"},
-             {EXIT => '1'}],
+             {EXIT => '2'}],
 
      ['suf-6', '--from=iec 4M',  {OUT=>'4194304'}],
      ['suf-7', '--from=auto 4M',  {OUT=>'4000000'}],
      ['suf-8', '--from=auto 4Mi',  {OUT=>'4194304'}],
      ['suf-9', '--from=auto 4MiQ',
              {ERR => "$prog: invalid suffix in input '4MiQ': 'Q'\n"},
-             {EXIT => '1'}],
+             {EXIT => '2'}],
      ['suf-10', '--from=auto 4QiQ',
              {ERR => "$prog: invalid suffix in input: '4QiQ'\n"},
-             {EXIT => '1'}],
+             {EXIT => '2'}],
 
      # characters after a white space are OK - printed as-is
      ['suf-11', '"4 M"',     {OUT=>'4 M'}],
@@ -130,10 +130,10 @@ my @Tests =
      ['suf-16', '--suffix=Foo --to=si   7000Foo',    {OUT=>'7.0KFoo'}],
      ['suf-17', '--suffix=Foo --to=si   7000Bar',
               {ERR => "$prog: invalid suffix in input: '7000Bar'\n"},
-              {EXIT => '1'}],
+              {EXIT => '2'}],
      ['suf-18', '--suffix=Foo --to=si   7000FooF',
               {ERR => "$prog: invalid suffix in input: '7000FooF'\n"},
-              {EXIT => '1'}],
+              {EXIT => '2'}],
 
      ## GROUPING
 
@@ -175,7 +175,7 @@ my @Tests =
      ['delim-3', '--delimiter=" " --from=auto "40M Foo"',{OUT=>'40000000 Foo'}],
      ['delim-4', '--delimiter=: --from=auto 40M:60M',  {OUT=>'40000000:60M'}],
      ['delim-5', '--delimiter=: --field 3 --from=auto 40M:60M',
-             {EXIT=>1},
+             {EXIT=>2},
              {ERR=>"$prog: input line is too short, no numbers found " .
                    "to convert in field 3\n"}],
 
@@ -190,7 +190,7 @@ my @Tests =
              {OUT=>'Hello 40000000 World 90G'}],
      ['field-3', '--field 3 --from=auto "Hello 40M World 90G"',
              {ERR=>"$prog: invalid number: 'World'\n"},
-             {EXIT => 1},],
+             {EXIT => 2},],
      # Last field - no text after number
      ['field-4', '--field 4 --from=auto "Hello 40M World 90G"',
              {OUT=>"Hello 40M World 90000000000"}],
@@ -204,7 +204,7 @@ my @Tests =
 
      # not enough fields
      ['field-8', '--field 3 --to=si "Hello World"',
-             {EXIT=>1},
+             {EXIT=>2},
              {ERR=>"$prog: input line is too short, no numbers found " .
                    "to convert in field 3\n"}],
 
@@ -317,10 +317,10 @@ my @Tests =
      # NO_DIGITS_FOUND
      ['strtod-1', '--from=si "foo"',
              {ERR=>"$prog: invalid number: 'foo'\n"},
-             {EXIT=> 1}],
+             {EXIT=> 2}],
      ['strtod-2', '--from=si ""',
              {ERR=>"$prog: invalid number: ''\n"},
-             {EXIT=> 1}],
+             {EXIT=> 2}],
 
      # INTEGRAL_OVERFLOW
      ['strtod-3', '--from=si "1234567890123456789012345678901234567890'.
@@ -329,26 +329,26 @@ my @Tests =
                      "1234567890123456789012345678901234567890" .
                      "1234567890123456789012345678901234567890'\n",
                      },
-             {EXIT=> 1}],
+             {EXIT=> 2}],
 
      #FRACTION_FORBIDDEN_WITHOUT_SCALING
      ['strtod-4', '12.2',
              {ERR=>"$prog: cannot process decimal-point value without " .
                      "scaling: '12.2' (consider using --from)\n"},
-             {EXIT=>1}],
+             {EXIT=>2}],
 
      # FRACTION_NO_DIGITS_FOUND
      ['strtod-5', '--from=si 12.',
              {ERR=>"$prog: invalid number: '12.'\n"},
-             {EXIT=>1}],
+             {EXIT=>2}],
      ['strtod-6', '--from=si 12.K',
              {ERR=>"$prog: invalid number: '12.K'\n"},
-             {EXIT=>1}],
+             {EXIT=>2}],
 
      # whitespace is not allowed after decimal-point
      ['strtod-6.1', '--from=si --delimiter=, "12.  2"',
              {ERR=>"$prog: invalid number: '12.  2'\n"},
-             {EXIT=>1}],
+             {EXIT=>2}],
 
      # FRACTION_OVERFLOW
      ['strtod-7', '--from=si "12.1234567890123456789012345678901234567890'.
@@ -357,30 +357,30 @@ my @Tests =
                      "12.1234567890123456789012345678901234567890" .
                      "1234567890123456789012345678901234567890'\n",
                      },
-             {EXIT=> 1}],
+             {EXIT=> 2}],
 
      # FRACTION_REQUIRES_SUFFIX
      ['strtod-8', '--from=si 12.2',
              {ERR=>"$prog: decimal-point values require a suffix" .
                     " (e.g. K/M/G/T): '12.2'\n"},
-             {EXIT=>1}],
+             {EXIT=>2}],
 
      # INVALID_SUFFIX
      ['strtod-9', '--from=si 12.2Q',
              {ERR=>"$prog: invalid suffix in input: '12.2Q'\n"},
-             {EXIT=>1}],
+             {EXIT=>2}],
 
      # VALID_BUT_FORBIDDEN_SUFFIX
      ['strtod-10', '12M',
              {ERR => "$prog: rejecting suffix " .
                      "in input: '12M' (consider using --from)\n"},
-             {EXIT=>1}],
+             {EXIT=>2}],
 
      # MISSING_I_SUFFIX
      ['strtod-11', '--from=iec-i 12M',
              {ERR => "$prog: missing 'i' suffix in input: " .
                      "'12M' (e.g Ki/Mi/Gi)\n"},
-             {EXIT=>1}],
+             {EXIT=>2}],
 
      #
      # Test double_to_human()
@@ -451,7 +451,7 @@ my @Tests =
      ['large-3','10000000000000000000',
              {ERR => "$prog: value too large to be printed: '1e+19' " .
                      "(consider using --to)\n"},
-             {EXIT=>1}],
+             {EXIT=>2}],
 
      # Test input:
      # Up to 27 digits is OK.
@@ -487,7 +487,7 @@ my @Tests =
      ['large-3.28','--to=si 9876543210000000000000000000',
              {ERR => "$prog: value too large to be converted: " .
                      "'9876543210000000000000000000'\n"},
-             {EXIT => 1}],
+             {EXIT => 2}],
 
      # Test Output
      ['large-4.1', '--from=si  9.7M',               {OUT=>"9700000"}],
@@ -508,35 +508,35 @@ my @Tests =
      ['large-4.14','--from=si  40E',
              {ERR => "$prog: value too large to be printed: '4e+19' " .
                      "(consider using --to)\n"},
-             {EXIT => 1}],
+             {EXIT => 2}],
      ['large-4.15','--from=si  500E',
              {ERR => "$prog: value too large to be printed: '5e+20' " .
                      "(consider using --to)\n"},
-             {EXIT => 1}],
+             {EXIT => 2}],
      ['large-4.16','--from=si  6Z',
              {ERR => "$prog: value too large to be printed: '6e+21' " .
                      "(consider using --to)\n"},
-             {EXIT => 1}],
+             {EXIT => 2}],
      ['large-4.17','--from=si  70Z',
              {ERR => "$prog: value too large to be printed: '7e+22' " .
                      "(consider using --to)\n"},
-             {EXIT => 1}],
+             {EXIT => 2}],
      ['large-4.18','--from=si  800Z',
              {ERR => "$prog: value too large to be printed: '8e+23' " .
                      "(consider using --to)\n"},
-             {EXIT => 1}],
+             {EXIT => 2}],
      ['large-4.19','--from=si  9Y',
              {ERR => "$prog: value too large to be printed: '9e+24' " .
                      "(consider using --to)\n"},
-             {EXIT => 1}],
+             {EXIT => 2}],
      ['large-4.20','--from=si  10Y',
              {ERR => "$prog: value too large to be printed: '1e+25' " .
                      "(consider using --to)\n"},
-             {EXIT => 1}],
+             {EXIT => 2}],
      ['large-4.21','--from=si  200Y',
              {ERR => "$prog: value too large to be printed: '2e+26' " .
                      "(consider using --to)\n"},
-             {EXIT => 1}],
+             {EXIT => 2}],
 
      ['large-5.1','--to=si 1000000000000000000', {OUT=>"1.0E"}],
      ['large-5','--from=si --to=si 2E', {OUT=>"2.0E"}],
@@ -552,7 +552,7 @@ my @Tests =
      ['large-13','--from=si --from-unit=1000000 9P',
              {ERR => "$prog: value too large to be printed: '9e+21' " .
                      "(consider using --to)\n"},
-             {EXIT => 1}],
+             {EXIT => 2}],
      ['large-13.1','--from=si --from-unit=1000000 --to=si 9P', {OUT=>"9.0Z"}],
 
      # Numbers>999Y are never acceptable, regardless of scaling
@@ -560,11 +560,11 @@ my @Tests =
      ['large-14.1','--from=si --to=si 1000Y',
              {ERR => "$prog: value too large to be printed: '1e+27' " .
                      "(cannot handle values > 999Y)\n"},
-             {EXIT => 1}],
+             {EXIT => 2}],
      ['large-14.2','--from=si --to=si --from-unit=10000 1Y',
              {ERR => "$prog: value too large to be printed: '1e+28' " .
                      "(cannot handle values > 999Y)\n"},
-             {EXIT => 1}],
+             {EXIT => 2}],
 
      # debug warnings
      ['debug-1', '--debug 4096', {OUT=>"4096"},
@@ -615,7 +615,7 @@ my @Tests =
              {ERR=>""},
              {ERR_SUBST=>"s/.*//msg"}],
      ['devdebug-12', '---devdebug --field 2 A',{OUT=>""},
-             {ERR=>""}, {EXIT=>1},
+             {ERR=>""}, {EXIT=>2},
              {ERR_SUBST=>"s/.*//msg"}],
 
      # Invalid parameters
@@ -690,100 +690,100 @@ my @Tests =
                   {OUT=>"--" . " " x 99996 . "4.2K--" }],
 
 
-     ## Check all errors again, this time with --ignore-errors
+     ## Check all errors again, this time with --invalid=fail
      ##  Input will be printed without conversion,
      ##  and exit code will be 2
-     ['ign-err-1', '--ignore-errors 4Q',
+     ['ign-err-1', '--invalid=fail 4Q',
              {ERR => "$prog: invalid suffix in input: '4Q'\n"},
              {OUT => "4Q\n"},
              {EXIT => 2}],
-     ['ign-err-2', '--ignore-errors 4M',
+     ['ign-err-2', '--invalid=fail 4M',
              {ERR => "$prog: rejecting suffix " .
              "in input: '4M' (consider using --from)\n"},
              {OUT => "4M\n"},
              {EXIT => 2}],
-     ['ign-err-3', '--ignore-errors --from=si 4MQ',
+     ['ign-err-3', '--invalid=fail --from=si 4MQ',
              {ERR => "$prog: invalid suffix in input '4MQ': 'Q'\n"},
              {OUT => "4MQ\n"},
              {EXIT => 2}],
-     ['ign-err-4', '--ignore-errors --suffix=Foo --to=si   7000FooF',
+     ['ign-err-4', '--invalid=fail --suffix=Foo --to=si   7000FooF',
               {ERR => "$prog: invalid suffix in input: '7000FooF'\n"},
               {OUT => "7000FooF\n"},
               {EXIT => 2}],
-     ['ign-err-5','--ignore-errors --field 3 --from=auto "Hello 40M World 90G"',
+     ['ign-err-5','--invalid=fail --field 3 --from=auto "Hello 40M World 90G"',
              {ERR => "$prog: invalid number: 'World'\n"},
              {OUT => "Hello 40M World 90G\n"},
              {EXIT => 2}],
-     ['ign-err-6', '--ignore-errors --field 3 --to=si "Hello World"',
+     ['ign-err-6', '--invalid=fail --field 3 --to=si "Hello World"',
              {ERR => "$prog: input line is too short, no numbers found " .
                      "to convert in field 3\n"},
              {OUT => "Hello World\n"},
              {EXIT => 2}],
-     ['ign-err-7', '--ignore-errors --from=si "foo"',
+     ['ign-err-7', '--invalid=fail --from=si "foo"',
              {ERR => "$prog: invalid number: 'foo'\n"},
              {OUT => "foo\n"},
              {EXIT=> 2}],
-     ['ign-err-8', '--ignore-errors 12M',
+     ['ign-err-8', '--invalid=fail 12M',
              {ERR => "$prog: rejecting suffix " .
                      "in input: '12M' (consider using --from)\n"},
              {OUT => "12M\n"},
              {EXIT => 2}],
-     ['ign-err-9', '--ignore-errors --from=iec-i 12M',
+     ['ign-err-9', '--invalid=fail --from=iec-i 12M',
              {ERR => "$prog: missing 'i' suffix in input: " .
                      "'12M' (e.g Ki/Mi/Gi)\n"},
              {OUT => "12M\n"},
              {EXIT=>2}],
-     ['ign-err-10','--ignore-errors 10000000000000000000',
+     ['ign-err-10','--invalid=fail 10000000000000000000',
              {ERR => "$prog: value too large to be printed: '1e+19' " .
                      "(consider using --to)\n"},
              {OUT => "10000000000000000000\n"},
              {EXIT=>2}],
-     ['ign-err-11','--ignore-errors --to=si 9876543210000000000000000000',
+     ['ign-err-11','--invalid=fail --to=si 9876543210000000000000000000',
              {ERR => "$prog: value too large to be converted: " .
                      "'9876543210000000000000000000'\n"},
              {OUT => "9876543210000000000000000000\n"},
              {EXIT => 2}],
 
      ## Ignore Errors with multiple conversions
-     ['ign-err-m1', '--ignore-errors --to=si 1000 2000 3000',
+     ['ign-err-m1', '--invalid=ignore --to=si 1000 2000 bad 3000',
+             {OUT => "1.0K\n2.0K\nbad\n3.0K"},
+             {EXIT => 0}],
+     ['ign-err-m1.1', '--invalid=ignore --to=si',
+             {IN_PIPE => "1000\n2000\nbad\n3000\n"},
+             {OUT => "1.0K\n2.0K\nbad\n3.0K"},
+             {EXIT => 0}],
+     ['ign-err-m1.3', '--invalid=fail --debug --to=si 1000 2000 3000',
              {OUT => "1.0K\n2.0K\n3.0K"},
              {EXIT => 0}],
-     ['ign-err-m1.1', '--ignore-errors --to=si',
-             {IN_PIPE => "1000\n2000\n3000\n"},
-             {OUT => "1.0K\n2.0K\n3.0K"},
-             {EXIT => 0}],
-     ['ign-err-m1.3', '--ignore-errors --debug --to=si 1000 2000 3000',
-             {OUT => "1.0K\n2.0K\n3.0K"},
-             {EXIT => 0}],
-     ['ign-err-m2', '--ignore-errors --to=si 1000 Foo 3000',
+     ['ign-err-m2', '--invalid=fail --to=si 1000 Foo 3000',
              {OUT => "1.0K\nFoo\n3.0K\n"},
              {ERR => "$prog: invalid number: 'Foo'\n"},
              {EXIT => 2}],
-     ['ign-err-m2.1', '--ignore-errors --to=si',
+     ['ign-err-m2.1', '--invalid=warn --to=si',
              {IN_PIPE => "1000\nFoo\n3000\n"},
-             {OUT => "1.0K\nFoo\n3.0K\n"},
+             {OUT => "1.0K\nFoo\n3.0K"},
              {ERR => "$prog: invalid number: 'Foo'\n"},
-             {EXIT => 2}],
+             {EXIT => 0}],
 
      # --debug will trigger a final warning at EOF
-     ['ign-err-m2.2', '--ignore-errors --debug --to=si 1000 Foo 3000',
+     ['ign-err-m2.2', '--invalid=fail --debug --to=si 1000 Foo 3000',
              {OUT => "1.0K\nFoo\n3.0K\n"},
              {ERR => "$prog: invalid number: 'Foo'\n" .
                      "$prog: failed to convert some of the input numbers\n"},
              {EXIT => 2}],
 
-     ['ign-err-m3', '--ignore-errors --field 2 --from=si --to=iec',
+     ['ign-err-m3', '--invalid=fail --field 2 --from=si --to=iec',
              {IN_PIPE => "A 1K x\nB 2M y\nC 3G z\n"},
              {OUT => "A 1000 x\nB 2.0M y\nC 2.8G z"},
              {EXIT => 0}],
      # invalid input on one of the fields
-     ['ign-err-m3.1', '--ignore-errors --field 2 --from=si --to=iec',
+     ['ign-err-m3.1', '--invalid=fail --field 2 --from=si --to=iec',
              {IN_PIPE => "A 1K x\nB Foo y\nC 3G z\n"},
              {OUT => "A 1000 x\nB Foo y\nC 2.8G z\n"},
              {ERR => "$prog: invalid number: 'Foo'\n"},
              {EXIT => 2}],
      # one of the lines is too short
-     ['ign-err-m3.2', '--ignore-errors --field 2 --from=si --to=iec',
+     ['ign-err-m3.2', '--invalid=fail --field 2 --from=si --to=iec',
              {IN_PIPE => "A 1K x\nB\nC 3G z\n"},
              {OUT => "A 1000 x\nB\nC 2.8G z\n"},
              {ERR => "$prog: input line is too short, no numbers found " .
@@ -845,7 +845,7 @@ foreach my $suf ( 'A' .. 'Z', 'a' .. 'z' ) {
     {
       push @Tests, ["auto-suf-si-$suf","--from=si --to=si 1$suf",
               {ERR=>"$prog: invalid suffix in input: '1${suf}'\n"},
-              {EXIT=>1}];
+              {EXIT=>2}];
     }
 }
 

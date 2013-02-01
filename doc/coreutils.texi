@@ -2249,7 +2249,7 @@ specific columns, maintaining proper line padding and alignment.
 
 @exitstatus
 
-See @option{--ignore-errors} for additional information regarding exit status.
+See @option{--invalid} for additional information regarding exit status.
 
 @subsection General options
 
@@ -2323,13 +2323,14 @@ modifiers. @samp{'} modified will enable @option{--grouping}. @samp{-} modifier
 will enable left-aligned @option{--padding}. Width modifier will enable
 right-aligned @option{--padding}.
 
-@item --ignore-errors
-@opindex --ignore-errors
-The default action is to exit with status code 1 on any input errors. With
-@option{--ignore-errors}, input errors will be silently ignored, invalid input
-will be printed as-is without conversion. With this option, exit status will be
-0 if all input values were converted successfully, 1 if a critical error
-occured, or 2 if some input numbers were not converted.
+@item --invalid=@var{mode}
+@opindex --invalid
+The default action on input errors is to exit immediately with status code 2.
+@option{--invalid=@samp{abort}} explicitly specifies this default mode.
+With a @var{mode} of @samp{fail}, print a warning for @emph{each} conversion
+error, and exit with status 2.  With a @var{mode} of @samp{warn}, exit with
+status 0, even in the presence of conversion errors, and with a @var{mode} of
+@samp{ignore} do not even print diagnostics.
 
 @item -d @var{d}
 @itemx --delimiter=@var{d}
