@@ -395,6 +395,14 @@ simple_strtod_int (const char *input_str,
 
   long double val = 0;
   unsigned int digits = 0;
+  bool negative = false;
+
+  if (*input_str == '-')
+    {
+      input_str++;
+      negative = true;
+    }
+
   *endptr = (char *) input_str;
   while (*endptr && isdigit (**endptr))
     {
@@ -418,6 +426,9 @@ simple_strtod_int (const char *input_str,
     }
   if (digits == 0)
     return SSE_INVALID_NUMBER;
+  if (negative)
+    val = - val;
+
   if (value)
     *value = val;
 

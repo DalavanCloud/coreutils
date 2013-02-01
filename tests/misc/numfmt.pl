@@ -66,6 +66,10 @@ my @Tests =
      ['26', '--to=iec --round=nearest 1997',   {OUT => "2.0K"}],
      ['27', '--to=iec-i 2048',                  {OUT => "2.0Ki"}],
 
+     ['neg-1', '-- -1234',                     {OUT => "-1234"}],
+     ['neg-2', '--padding=5 -- -1234',         {OUT => "-1234"}],
+     ['neg-3', '--padding=6 -- -1234',         {OUT => " -1234"}],
+
      ['unit-1', '--from-unit=512 4',   {OUT => "2048"}],
      ['unit-2', '--to-unit=512 2048',   {OUT => "4"}],
      ['unit-3', '--from-unit=512 --from=si 4M',   {OUT => "2048000000"}],
