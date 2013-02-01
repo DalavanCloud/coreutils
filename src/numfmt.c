@@ -553,6 +553,11 @@ simple_strtod_human (const char *input_str,
   if (**endptr != '\0')
     {
       /* process suffix.  */
+
+      /* Skip any blanks between the number and suffix.  */
+      while (isblank (**endptr))
+        (*endptr)++;
+
       if (!valid_suffix (**endptr))
         return SSE_INVALID_SUFFIX;
 

@@ -140,6 +140,9 @@ my @Tests =
      ['suf-18', '--suffix=Foo --to=si   7000FooF',
               {ERR => "$prog: invalid suffix in input: '7000FooF'\n"},
               {EXIT => '2'}],
+     # space(s) between number and suffix
+     # only field 1 is used, so this could be confusing?
+     ['suf-19', "-d'\n' --from=si '4.0 K'",         {OUT => "4000"}],
 
      ## GROUPING
 
