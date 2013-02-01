@@ -382,8 +382,6 @@ enum simple_strtod_error
   SSE_INVALID_NUMBER,
 
   /* the following are returned by 'simple_strtod_human'.  */
-  SSE_FRACTION_FORBIDDEN_WITHOUT_SCALING,
-  SSE_FRACTION_REQUIRES_SUFFIX,
   SSE_VALID_BUT_FORBIDDEN_SUFFIX,
   SSE_INVALID_SUFFIX,
   SSE_MISSING_I_SUFFIX
@@ -455,7 +453,7 @@ simple_strtod_int (const char *input_str,
    and return the value in a 'long double' VALUE.
    ENDPTR is required (unlike strtod) and is used to store a pointer
    to the character after the last character used in the conversion.
-   HAVE_FRACTIONS is optional and used to indicate fractions are present.
+   PRECISION is optional and used to indicate fractions are present.
 
    Note locale'd grouping is not supported,
    nor is skipping of white-space supported.
@@ -469,11 +467,12 @@ static enum simple_strtod_error
 simple_strtod_float (const char *input_str,
                      char **endptr,
                      long double *value,
-                     int *have_fractions)
+                     size_t *precision)
 {
   enum simple_strtod_error e = SSE_OK;
 
-  *have_fractions = 0;
+  if (precision)
+    *precision = 0;
 
   /* TODO: accept locale'd grouped values for the integral part.  */
   e = simple_strtod_int (input_str, endptr, value);
@@ -495,14 +494,16 @@ simple_strtod_float (const char *input_str,
       if (e2 == SSE_OK_PRECISION_LOSS)
         e = e2;                       /* propagate warning.  */
 
-      int exponent = ptr2 - *endptr;  /* number of digits in the fractions.  */
+      /* number of digits in the fractions.  */
+      size_t exponent = ptr2 - *endptr;
+
       val_frac = ((long double) val_frac) / powerld (10, exponent);
 
       if (value)
         *value += val_frac;
 
-      if (have_fractions)
-        *have_fractions = 1;
+      if (precision)
+        *precision = exponent;
 
       *endptr = ptr2;
     }
@@ -510,7 +511,8 @@ simple_strtod_float (const char *input_str,
 }
 
 /* Read a 'human' INPUT_STR represented as "NNNN[.NNNNN] + suffix",
-   and return the value in a 'long double' VALUE.
+   and return the value in a 'long double' VALUE,
+   with the precision of the input returned in PRECISION.
    ENDPTR is required (unlike strtod) and is used to store a pointer
    to the character after the last character used in the conversion.
    ALLOWED_SCALING determines the scaling supported.
@@ -523,17 +525,14 @@ simple_strtod_float (const char *input_str,
       SSE_OK_PRECISION_LOSS - if more than 18 digits were used.
       SSE_OVERFLOW          - if more than 27 digits (999Y) were used.
       SSE_INVALID_NUMBER    - if no digits were found.
-      SSE_FRACTION_FORBIDDEN_WITHOUT_SCALING
-      SSE_FRACTION_REQUIRES_SUFFIX
       SSE_VALID_BUT_FORBIDDEN_SUFFIX
       SSE_INVALID_SUFFIX
       SSE_MISSING_I_SUFFIX  */
 static enum simple_strtod_error
 simple_strtod_human (const char *input_str,
-                     char **endptr, long double *value,
+                     char **endptr, long double *value, size_t *precision,
                      enum scale_type allowed_scaling)
 {
-  int have_fractions = 0;
   int power = 0;
   /* 'scale_auto' is checked below.  */
   int scale_base = default_scale_base (allowed_scaling);
@@ -543,50 +542,38 @@ simple_strtod_human (const char *input_str,
                    "locale decimal-point: '%s'\n"), input_str, decimal_point);
 
   enum simple_strtod_error e =
-    simple_strtod_float (input_str, endptr, value, &have_fractions);
+    simple_strtod_float (input_str, endptr, value, precision);
   if (e != SSE_OK && e != SSE_OK_PRECISION_LOSS)
     return e;
 
   if (dev_debug)
     error (0, 0, _("  parsed numeric value: %Lf\n"
-                   "  have_fractions = %d\n"), *value, have_fractions);
+                   "  input precision = %d\n"), *value, (int)*precision);
 
-  if (have_fractions && allowed_scaling == scale_none)
-    return SSE_FRACTION_FORBIDDEN_WITHOUT_SCALING;
-
-
-  /* no suffix / trailing characters.  */
-  if (**endptr == '\0')
+  if (**endptr != '\0')
     {
-      if (have_fractions)
-        return SSE_FRACTION_REQUIRES_SUFFIX;
+      /* process suffix.  */
+      if (!valid_suffix (**endptr))
+        return SSE_INVALID_SUFFIX;
 
-      if (dev_debug)
-        error (0, 0, _("  no fraction,suffix detected\n"
-                       "  returning value: %Lf (%LG)\n"), *value, *value);
+      if (allowed_scaling == scale_none)
+        return SSE_VALID_BUT_FORBIDDEN_SUFFIX;
 
-      return e;
-    }
+      power = suffix_power (**endptr);
+      (*endptr)++;                     /* skip first suffix character.  */
 
-  /* process suffix.  */
-  if (!valid_suffix (**endptr))
-    return SSE_INVALID_SUFFIX;
+      if (allowed_scaling == scale_auto && **endptr == 'i')
+        {
+          /* auto-scaling enabled, and the first suffix character
+              is followed by an 'i' (e.g. Ki, Mi, Gi).  */
+          scale_base = 1024;
+          (*endptr)++;              /* skip second  ('i') suffix character.  */
+          if (dev_debug)
+            error (0, 0, _("  Auto-scaling, found 'i', switching to base %d\n"),
+                    scale_base);
+        }
 
-  if (allowed_scaling == scale_none)
-    return SSE_VALID_BUT_FORBIDDEN_SUFFIX;
-
-  power = suffix_power (**endptr);
-  (*endptr)++;                     /* skip first suffix character.  */
-
-  if (allowed_scaling == scale_auto && **endptr == 'i')
-    {
-      /* auto-scaling enabled, and the first suffix character
-         is followed by an 'i' (e.g. Ki, Mi, Gi).  */
-      scale_base = 1024;
-      (*endptr)++;                 /* skip second  ('i') suffix character.  */
-      if (dev_debug)
-        error (0, 0, _("  Auto-scaling, found 'i', switching to base %d\n"),
-               scale_base);
+      *precision = 0;  /* Reset, to select precision based on scale.  */
     }
 
   if (allowed_scaling == scale_IEC_I)
@@ -633,15 +620,6 @@ simple_strtod_fatal (enum simple_strtod_error err, char const *input_str)
       msgid = N_("invalid number: '%s'");
       break;
 
-    case SSE_FRACTION_FORBIDDEN_WITHOUT_SCALING:
-      msgid = N_("cannot process decimal-point value without scaling: '%s'"
-                 " (consider using --from)");
-      break;
-
-    case SSE_FRACTION_REQUIRES_SUFFIX:
-      msgid = N_("decimal-point values require a suffix (e.g. K/M/G/T): '%s'");
-      break;
-
     case SSE_VALID_BUT_FORBIDDEN_SUFFIX:
       msgid = N_("rejecting suffix in input: '%s' (consider using --from)");
       break;
@@ -662,7 +640,7 @@ simple_strtod_fatal (enum simple_strtod_error err, char const *input_str)
 
 /* Convert VAL to a human format string in BUF.  */
 static void
-double_to_human (long double val,
+double_to_human (long double val, int precision,
                  char *buf, size_t buf_size,
                  enum scale_type scale, int group, enum round_type round)
 {
@@ -674,10 +652,11 @@ double_to_human (long double val,
       if (dev_debug)
         error (0, 0,
                (group) ?
-               _("  no scaling, returning (grouped) value: %'.0Lf\n") :
-               _("  no scaling, returning value: %.0Lf\n"), val);
+               _("  no scaling, returning (grouped) value: %'.*Lf\n") :
+               _("  no scaling, returning value: %.*Lf\n"), precision, val);
 
-      int i = snprintf (buf, buf_size, (group) ? "%'.0Lf" : "%.0Lf", val);
+      int i = snprintf (buf, buf_size, (group) ? "%'.*Lf" : "%.*Lf",
+                        precision, val);
       if (i < 0 || i >= (int) buf_size)
         error (EXIT_FAILURE, 0,
                _("failed to prepare value '%Lf' for printing"), val);
@@ -985,7 +964,7 @@ parse_format_string (char const *fmt)
 }
 
 /* Parse a numeric value (with optional suffix) from a string.
-   Returns a long double value.
+   Returns a long double value, with input precision.
 
    If there's an error converting the string to value - exits with
    an error.
@@ -993,12 +972,13 @@ parse_format_string (char const *fmt)
    If there are any trailing characters after the number
    (besides a valid suffix) - exits with an error.  */
 static enum simple_strtod_error
-parse_human_number (const char *str, long double /*output */ *value)
+parse_human_number (const char *str, long double /*output */ *value,
+                    size_t *precision)
 {
   char *ptr = NULL;
 
   enum simple_strtod_error e =
-    simple_strtod_human (str, &ptr, value, scale_from);
+    simple_strtod_human (str, &ptr, value, precision, scale_from);
   if (e != SSE_OK && e != SSE_OK_PRECISION_LOSS)
     {
       simple_strtod_fatal (e, str);
@@ -1019,7 +999,7 @@ parse_human_number (const char *str, long double /*output */ *value)
 /* Print the given VAL, using the requested representation.
    The number is printed to STDOUT, with padding and alignment.  */
 static int
-prepare_padded_number (const long double val)
+prepare_padded_number (const long double val, size_t precision)
 {
   /* Generate Output. */
   char buf[128];
@@ -1043,7 +1023,8 @@ prepare_padded_number (const long double val)
       return 0;
     }
 
-  double_to_human (val, buf, sizeof (buf), scale_to, grouping, _round);
+  double_to_human (val, precision, buf, sizeof (buf), scale_to, grouping,
+                   _round);
   if (suffix)
     strncat (buf, suffix, sizeof (buf) - strlen (buf) -1);
 
@@ -1086,7 +1067,7 @@ print_padded_number (void)
 /* Converts the TEXT number string to the requested representation,
    and handles automatic suffix addition.  */
 static int
-process_suffixed_number (char *text, long double *result)
+process_suffixed_number (char *text, long double *result, size_t *precision)
 {
   if (suffix && strlen (text) > strlen (suffix))
     {
@@ -1130,7 +1111,7 @@ process_suffixed_number (char *text, long double *result)
     }
 
   long double val = 0;
-  enum simple_strtod_error e = parse_human_number (p, &val);
+  enum simple_strtod_error e = parse_human_number (p, &val, precision);
   if (e == SSE_OK_PRECISION_LOSS && debug)
     error (0, 0, _("large input value '%s': possible precision loss"), p);
 
@@ -1230,6 +1211,7 @@ process_line (char *line, bool newline)
 {
   char *pre, *num, *suf;
   long double val = 0;
+  size_t precision = 0;
   int valid_number = 0;
 
   extract_fields (line, field, &pre, &num, &suf);
@@ -1241,9 +1223,9 @@ process_line (char *line, bool newline)
 
   if (num)
     {
-      valid_number = process_suffixed_number (num, &val);
+      valid_number = process_suffixed_number (num, &val, &precision);
       if (valid_number)
-        valid_number = prepare_padded_number (val);
+        valid_number = prepare_padded_number (val, precision);
     }
 
   if (pre)

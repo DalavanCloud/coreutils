@@ -70,6 +70,12 @@ my @Tests =
      ['neg-2', '--padding=5 -- -1234',         {OUT => "-1234"}],
      ['neg-3', '--padding=6 -- -1234',         {OUT => " -1234"}],
 
+     ['float-1', '1.1',                        {OUT => "1.1"}],
+     ['float-2', '1.22',                       {OUT => "1.22"}],
+     ['float-3', '1.22.',
+             {ERR => "$prog: invalid suffix in input: '1.22.'\n"},
+             {EXIT => '2'}],
+
      ['unit-1', '--from-unit=512 4',   {OUT => "2048"}],
      ['unit-2', '--to-unit=512 2048',   {OUT => "4"}],
      ['unit-3', '--from-unit=512 --from=si 4M',   {OUT => "2048000000"}],
@@ -331,12 +337,6 @@ my @Tests =
                      },
              {EXIT=> 2}],
 
-     #FRACTION_FORBIDDEN_WITHOUT_SCALING
-     ['strtod-4', '12.2',
-             {ERR=>"$prog: cannot process decimal-point value without " .
-                     "scaling: '12.2' (consider using --from)\n"},
-             {EXIT=>2}],
-
      # FRACTION_NO_DIGITS_FOUND
      ['strtod-5', '--from=si 12.',
              {ERR=>"$prog: invalid number: '12.'\n"},
@@ -358,12 +358,6 @@ my @Tests =
                      "1234567890123456789012345678901234567890'\n",
                      },
              {EXIT=> 2}],
-
-     # FRACTION_REQUIRES_SUFFIX
-     ['strtod-8', '--from=si 12.2',
-             {ERR=>"$prog: decimal-point values require a suffix" .
-                    " (e.g. K/M/G/T): '12.2'\n"},
-             {EXIT=>2}],
 
      # INVALID_SUFFIX
      ['strtod-9', '--from=si 12.2Q',
