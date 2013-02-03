@@ -89,7 +89,8 @@ enum round_type
 {
   round_ceiling,
   round_floor,
-  round_nearest
+  round_nearest,
+  round_from_zero,
 };
 
 static char const *const round_args[] =
@@ -158,7 +159,7 @@ enum { MAX_ACCEPTABLE_DIGITS = 27 };
 
 static enum scale_type scale_from = scale_none;
 static enum scale_type scale_to = scale_none;
-static enum round_type _round = round_ceiling;
+static enum round_type _round = round_from_zero;
 static enum inval_type _invalid = inval_abort;
 static const char *suffix = NULL;
 static uintmax_t from_unit_size = 1;
@@ -307,6 +308,13 @@ powerld (long double base, unsigned int x)
   return result;
 }
 
+/* Similar to 'fabs(3)' but without requiring 'libm'.  */
+static inline long double
+absld (long double val)
+{
+  return val < 0 ? -val : val;
+}
+
 /* Scale down 'val', returns 'updated val' and 'x', such that
      val*base^X = original val
      Similar to "frexpl(3)" but without requiring 'libm',
@@ -318,7 +326,7 @@ expld (long double val, unsigned int base, unsigned int /*output */ *x)
 
   if (val >= -LDBL_MAX && val <= LDBL_MAX)
     {
-      while (val >= base)
+      while (absld (val) >= base)
         {
           ++power;
           val /= base;
@@ -330,28 +338,38 @@ expld (long double val, unsigned int base, unsigned int /*output */ *x)
 }
 
 /* EXTREMELY limited 'round' - without 'libm'.
-   Assumes only positive, small values.  */
+   Assumes values that fit in int.  */
 static inline int
 simple_round_nearest (long double val)
 {
-  return (int) (val + 0.5);
-}
-
-/* EXTREMELY limited 'floor' - without 'libm'.
-   Assumes only positive, small values.  */
-static inline int
-simple_round_floor (long double val)
-{
-  return (int) val;
+  return val < 0 ? val - 0.5 : val + 0.5;
 }
 
 /* EXTREMELY limited 'ceil' - without 'libm'.
-   Assumes only positive, small values.  */
+   Assumes values that fit in int.  */
 static inline int
 simple_round_ceiling (long double val)
 {
-  return simple_round_floor (val)
-    + (((val - simple_round_floor (val)) > 0) ? 1 : 0);
+  int intval = val;
+  if (intval < val)
+    intval++;
+  return intval;
+}
+
+/* EXTREMELY limited 'floor' - without 'libm'.
+   Assumes values that fit in int.  */
+static inline int
+simple_round_floor (long double val)
+{
+  return -simple_round_ceiling (-val);
+}
+
+/* EXTREMELY limited 'round away from zero'.
+   Assumes values that fit in int.  */
+static inline int
+simple_round_from_zero (long double val)
+{
+  return val < 0 ? simple_round_floor (val) : simple_round_ceiling (val);
 }
 
 static inline int
@@ -367,6 +385,9 @@ simple_round (long double val, enum round_type t)
 
     case round_nearest:
       return simple_round_nearest (val);
+
+    case round_from_zero:
+      return simple_round_from_zero (val);
 
     default:
       /* to silence the compiler - this should never happen.  */
@@ -390,6 +411,8 @@ enum simple_strtod_error
 /* Read an *integer* INPUT_STR,
    but return the integer value in a 'long double' VALUE
    hence, no UINTMAX_MAX limitation.
+   NEGATIVE is updated, and is stored separately from the VALUE
+   so that signbit() isn't required to determine the sign of -0..
    ENDPTR is required (unlike strtod) and is used to store a pointer
    to the character after the last character used in the conversion.
 
@@ -403,19 +426,20 @@ enum simple_strtod_error
       SSE_INVALID_NUMBER    - if no digits were found.  */
 static enum simple_strtod_error
 simple_strtod_int (const char *input_str,
-                   char **endptr, long double *value)
+                   char **endptr, long double *value, bool *negative)
 {
   enum simple_strtod_error e = SSE_OK;
 
   long double val = 0;
   unsigned int digits = 0;
-  bool negative = false;
 
   if (*input_str == '-')
     {
       input_str++;
-      negative = true;
+      *negative = true;
     }
+  else
+    *negative = false;
 
   *endptr = (char *) input_str;
   while (*endptr && isdigit (**endptr))
@@ -440,8 +464,8 @@ simple_strtod_int (const char *input_str,
     }
   if (digits == 0)
     return SSE_INVALID_NUMBER;
-  if (negative)
-    val = - val;
+  if (*negative)
+    val = -val;
 
   if (value)
     *value = val;
@@ -469,13 +493,14 @@ simple_strtod_float (const char *input_str,
                      long double *value,
                      size_t *precision)
 {
+  bool negative;
   enum simple_strtod_error e = SSE_OK;
 
   if (precision)
     *precision = 0;
 
   /* TODO: accept locale'd grouped values for the integral part.  */
-  e = simple_strtod_int (input_str, endptr, value);
+  e = simple_strtod_int (input_str, endptr, value, &negative);
   if (e != SSE_OK && e != SSE_OK_PRECISION_LOSS)
     return e;
 
@@ -485,14 +510,17 @@ simple_strtod_float (const char *input_str,
     {
       char *ptr2;
       long double val_frac = 0;
+      bool neg_frac;
 
       (*endptr) += decimal_point_length;
       enum simple_strtod_error e2 =
-        simple_strtod_int (*endptr, &ptr2, &val_frac);
+        simple_strtod_int (*endptr, &ptr2, &val_frac, &neg_frac);
       if (e2 != SSE_OK && e2 != SSE_OK_PRECISION_LOSS)
         return e2;
       if (e2 == SSE_OK_PRECISION_LOSS)
         e = e2;                       /* propagate warning.  */
+      if (neg_frac)
+        return SSE_INVALID_NUMBER;
 
       /* number of digits in the fractions.  */
       size_t exponent = ptr2 - *endptr;
@@ -500,7 +528,12 @@ simple_strtod_float (const char *input_str,
       val_frac = ((long double) val_frac) / powerld (10, exponent);
 
       if (value)
-        *value += val_frac;
+        {
+          if (negative)
+            *value -= val_frac;
+          else
+            *value += val_frac;
+        }
 
       if (precision)
         *precision = exponent;
@@ -680,7 +713,7 @@ double_to_human (long double val, int precision,
 
   /* Perform rounding. */
   int ten_or_less = 0;
-  if (val < 10)
+  if (absld (val) < 10)
     {
       /* for values less than 10, we allow one decimal-point digit,
          so adjust before rounding. */
@@ -691,7 +724,7 @@ double_to_human (long double val, int precision,
   /* two special cases after rounding:
      1. a "999.99" can turn into 1000 - so scale down
      2. a "9.99" can turn into 10 - so don't display decimal-point.  */
-  if (val >= scale_base)
+  if (absld (val) >= scale_base)
     {
       val /= scale_base;
       power++;
@@ -701,8 +734,8 @@ double_to_human (long double val, int precision,
 
   /* should "7.0" be printed as "7" ?
      if removing the ".0" is preferred, enable the fourth condition.  */
-  int show_decimal_point = (val != 0) && (val < 10) && (power > 0);
-  /* && (val>simple_round_floor (val))) */
+  int show_decimal_point = (val != 0) && (absld (val) < 10) && (power > 0);
+  /* && (absld (val) > simple_round_floor (val))) */
 
   if (dev_debug)
     error (0, 0, _("  after rounding, value=%Lf * %0.f ^ %d\n"),
