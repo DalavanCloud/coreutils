@@ -181,7 +181,8 @@ my @Tests =
      ['delim-2', '--delimiter="" --from=auto "40 M"',{OUT=>'40000000'}],
      ['delim-3', '--delimiter=" " --from=auto "40M Foo"',{OUT=>'40000000 Foo'}],
      ['delim-4', '--delimiter=: --from=auto 40M:60M',  {OUT=>'40000000:60M'}],
-     ['delim-5', '--delimiter=: --field 3 --from=auto 40M:60M',
+     ['delim-5', '-d: --field=2 --from=auto :40M:60M',  {OUT=>':40000000:60M'}],
+     ['delim-6', '--delimiter=: --field 3 --from=auto 40M:60M',
              {EXIT=>2},
              {ERR=>"$prog: input line is too short, no numbers found " .
                    "to convert in field 3\n"}],
