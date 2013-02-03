@@ -140,9 +140,9 @@ my @Tests =
      ['suf-18', '--suffix=Foo --to=si   7000FooF',
               {ERR => "$prog: invalid suffix in input: '7000FooF'\n"},
               {EXIT => '2'}],
-     # space(s) between number and suffix
-     # only field 1 is used, so this could be confusing?
-     ['suf-19', "-d'\n' --from=si '4.0 K'",         {OUT => "4000"}],
+     # space(s) between number and suffix.  Note only field 1 is used
+     # by default so specify the NUL delimiter to consider the whole "line".
+     ['suf-19', "-d '' --from=si '4.0 K'",         {OUT => "4000"}],
 
      ## GROUPING
 
@@ -178,9 +178,7 @@ my @Tests =
 
      # Delimiters
      ['delim-1', '--delimiter=: --from=auto 40M:',   {OUT=>'40000000:'}],
-     ['delim-2', '--delimiter="" --from=auto 40M:',
-             {ERR => "$prog: delimiter must be exactly one character\n"},
-             {EXIT => '1'}],
+     ['delim-2', '--delimiter="" --from=auto "40 M"',{OUT=>'40000000'}],
      ['delim-3', '--delimiter=" " --from=auto "40M Foo"',{OUT=>'40000000 Foo'}],
      ['delim-4', '--delimiter=: --from=auto 40M:60M',  {OUT=>'40000000:60M'}],
      ['delim-5', '--delimiter=: --field 3 --from=auto 40M:60M',

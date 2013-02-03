@@ -1332,9 +1332,10 @@ main (int argc, char **argv)
           break;
 
         case 'd':
-          if (strlen (optarg) != 1)
+          /* Interpret -d '' to mean 'use the NUL byte as the delimiter.'  */
+          if (optarg[0] != '\0' && optarg[1] != '\0')
             error (EXIT_FAILURE, 0,
-                   _("delimiter must be exactly one character"));
+                   _("the delimiter must be a single character"));
           delimiter = optarg[0];
           break;
 
