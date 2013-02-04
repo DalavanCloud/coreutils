@@ -562,8 +562,9 @@ simple_strtod_float (const char *input_str,
    to the character after the last character used in the conversion.
    ALLOWED_SCALING determines the scaling supported.
 
-   Note locale'd grouping is not supported,
-   nor is skipping of white-space supported.
+   TODO:
+     support locale'd grouping
+     accept scentific and hex floats (probably use strtold directly)
 
    Returns:
       SSE_OK - valid number.
@@ -927,6 +928,10 @@ Examples:\n\
 
    Only a limited subset of printf(3) syntax is supported.
 
+   TODO:
+     support .precision
+     support %e %g etc. rather than just %f
+
    NOTES:
    1. This function sets the global variables:
        padding_width, padding_alignment, grouping,
@@ -1211,6 +1216,11 @@ skip_fields (char *buf, int fields)
 /* Parse a delimited string, and extracts the requested field.
    NOTE: the input buffer is modified.
 
+   TODO:
+     Maybe support multiple fields, though can always pipe output
+     into another numfmt to process other fields.
+     Maybe default to processing all fields rather than just first?
+
    Output:
      _PREFIX, _DATA, _SUFFIX will point to the relevant positions
      in the input string, or be NULL if such a part doesn't exist.  */
@@ -1376,6 +1386,8 @@ main (int argc, char **argv)
               padding_alignment = MBS_ALIGN_LEFT;
               padding_width = -padding_width;
             }
+          /* TODO: We probably want to apply a specific --padding
+             to --header lines too.  */
           break;
 
         case FIELD_OPTION:
