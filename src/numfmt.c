@@ -699,6 +699,10 @@ double_to_human (long double val, int precision,
 
   if (scale == scale_none)
     {
+      val *= powerld (10, precision);
+      val = simple_round (val, round);
+      val /= powerld (10, precision);
+
       if (dev_debug)
         error (0, 0,
                (group) ?
