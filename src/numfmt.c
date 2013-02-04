@@ -338,41 +338,41 @@ expld (long double val, unsigned int base, unsigned int /*output */ *x)
 }
 
 /* EXTREMELY limited 'round' - without 'libm'.
-   Assumes values that fit in int.  */
-static inline int
+   Assumes values that fit in intmax_t.  */
+static inline intmax_t
 simple_round_nearest (long double val)
 {
   return val < 0 ? val - 0.5 : val + 0.5;
 }
 
 /* EXTREMELY limited 'ceil' - without 'libm'.
-   Assumes values that fit in int.  */
-static inline int
+   Assumes values that fit in intmax_t.  */
+static inline intmax_t
 simple_round_ceiling (long double val)
 {
-  int intval = val;
+  intmax_t intval = val;
   if (intval < val)
     intval++;
   return intval;
 }
 
 /* EXTREMELY limited 'floor' - without 'libm'.
-   Assumes values that fit in int.  */
-static inline int
+   Assumes values that fit in intmax_t.  */
+static inline intmax_t
 simple_round_floor (long double val)
 {
   return -simple_round_ceiling (-val);
 }
 
 /* EXTREMELY limited 'round away from zero'.
-   Assumes values that fit in int.  */
-static inline int
+   Assumes values that fit in intmax_t.  */
+static inline intmax_t
 simple_round_from_zero (long double val)
 {
   return val < 0 ? simple_round_floor (val) : simple_round_ceiling (val);
 }
 
-static inline int
+static inline intmax_t
 simple_round (long double val, enum round_type t)
 {
   switch (t)
