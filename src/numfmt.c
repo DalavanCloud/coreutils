@@ -89,18 +89,19 @@ enum round_type
 {
   round_ceiling,
   round_floor,
-  round_nearest,
   round_from_zero,
+  round_to_zero,
+  round_nearest,
 };
 
 static char const *const round_args[] =
 {
-  "ceiling", "floor", "nearest", NULL
+  "up", "down", "from-zero", "towards-zero", "nearest", NULL
 };
 
 static enum round_type const round_types[] =
 {
-  round_ceiling, round_floor, round_nearest
+  round_ceiling, round_floor, round_from_zero, round_to_zero, round_nearest
 };
 
 
@@ -337,14 +338,6 @@ expld (long double val, unsigned int base, unsigned int /*output */ *x)
   return val;
 }
 
-/* EXTREMELY limited 'round' - without 'libm'.
-   Assumes values that fit in intmax_t.  */
-static inline intmax_t
-simple_round_nearest (long double val)
-{
-  return val < 0 ? val - 0.5 : val + 0.5;
-}
-
 /* EXTREMELY limited 'ceil' - without 'libm'.
    Assumes values that fit in intmax_t.  */
 static inline intmax_t
@@ -372,6 +365,22 @@ simple_round_from_zero (long double val)
   return val < 0 ? simple_round_floor (val) : simple_round_ceiling (val);
 }
 
+/* EXTREMELY limited 'round away to zero'.
+   Assumes values that fit in intmax_t.  */
+static inline intmax_t
+simple_round_to_zero (long double val)
+{
+  return val;
+}
+
+/* EXTREMELY limited 'round' - without 'libm'.
+   Assumes values that fit in intmax_t.  */
+static inline intmax_t
+simple_round_nearest (long double val)
+{
+  return val < 0 ? val - 0.5 : val + 0.5;
+}
+
 static inline intmax_t
 simple_round (long double val, enum round_type t)
 {
@@ -383,11 +392,14 @@ simple_round (long double val, enum round_type t)
     case round_floor:
       return simple_round_floor (val);
 
-    case round_nearest:
-      return simple_round_nearest (val);
-
     case round_from_zero:
       return simple_round_from_zero (val);
+
+    case round_to_zero:
+      return simple_round_to_zero (val);
+
+    case round_nearest:
+      return simple_round_nearest (val);
 
     default:
       /* to silence the compiler - this should never happen.  */
@@ -805,9 +817,9 @@ Reformat NUMBER(s) from stdin or command arguments.\n\
   --from-unit=N   specify the input unit size (instead of the default 1).\n\
   --to=UNIT       auto-scale output numbers to UNITs.\n\
                   See UNIT below.\n\
-  --to-unit=N     specify the output unit size (instead of the default 1).\n\
-  --round=METHOD  round input numbers. METHOD can be:\n\
-                  ceiling (the default), floor, nearest\n\
+  --to-unit=N     the output unit size (instead of the default 1).\n\
+  --round=METHOD  the rounding method to use when scaling. METHOD can be:\n\
+                  up, down, from-zero (default), towards-zero, nearest\n\
   --suffix=SUFFIX add SUFFIX to output numbers, and accept optional SUFFIX\n\
                   in input numbers.\n\
   --padding=N     pad the output to N characters.\n\

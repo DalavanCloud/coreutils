@@ -2282,11 +2282,14 @@ bytes in blocks of 1KB, use @samp{--to=si --to=units=1000}).
 
 @item --round=@var{method}
 @opindex --round
-@opindex --round=ceiling
-@opindex --round=floor
+@opindex --round=up
+@opindex --round=down
+@opindex --round=from-zero
+@opindex --round=towards-zero
 @opindex --round=nearest
 When converting number representations, round the number according to
-@var{method} can be @samp{ceiling} (the default), @samp{floor}, @samp{nearest}.
+@var{method}, which can be @samp{up}, @samp{down},
+@samp{from-zero} (the default), @samp{towards-zero}, @samp{nearest}.
 
 @item --suffix=@var{suffix}
 @opindex --suffix
