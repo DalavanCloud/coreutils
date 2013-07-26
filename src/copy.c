@@ -967,9 +967,6 @@ copy_reg (char const *src_name, char const *dst_name,
       goto close_src_and_dst_desc;
     }
 
-  if (x->set_security_context)
-    restorecon (dst_name, 1, false);
-
   /* --attributes-only overrides --reflink.  */
   if (data_copy_required && x->reflink_mode)
     {
