@@ -872,19 +872,22 @@ copy_reg (char const *src_name, char const *dst_name,
 
           /* Tell caller that the destination file was unlinked.  */
           *new_dst = true;
+
+          /* Ensure there is no race where a file may be left without
+             an appropriate security context.  */
+          if (x->set_security_context)
+            {
+              if (defaultcon (dst_name, dst_mode) < 0
+                  && !errno_unsupported (errno))
+                error (0, errno,
+                       _("failed to set default file creation context for %s"),
+                       quote (dst_name));
+            }
         }
     }
 
   if (*new_dst)
     {
-      /* With -Z, set the context for the file about to be created,
-         based on the default context for the process, with the type
-         adjusted as per the destination path.
-         We do this before the file is created so that there is no race
-         where a file may be left without an appropriate security context.  */
-      if (x->set_security_context)
-        defaultcon (dst_name, dst_mode);
-
     open_with_O_CREAT:;
 
       int open_flags = O_WRONLY | O_CREAT | O_BINARY;
@@ -2252,7 +2255,21 @@ copy_internal (char const *src_name, char const *dst_name,
         }
     }
   else if (x->set_security_context)
-    restorecon (dst_name, 1, false);
+    {
+      /* With -Z, set the context for the file about to be created,
+         based on the default context for the process, with the type
+         adjusted as per the destination path.
+         We do this before the file is created so that there is no race
+         where a file may be left without an appropriate security context.
+         FIXME: Do we need to consider dst_mode_bits here?  */
+      if (new_dst && defaultcon (dst_name, src_mode) < 0)
+        {
+          if (!errno_unsupported (errno))
+            error (0, errno,
+                   _("failed to set default file creation context for %s"),
+                   quote (dst_name));
+        }
+    }
 
   if (S_ISDIR (src_mode))
     {
@@ -2526,6 +2543,10 @@ copy_internal (char const *src_name, char const *dst_name,
       if (lstat (dst_name, &sb) == 0)
         record_file (x->dest_info, dst_name, &sb);
     }
+
+  /* With -Z, set the context for existing files.  */
+  if (!new_dst && x->set_security_context)
+    restorecon (dst_name, 0, false);
 
   /* If we've just created a hard-link due to cp's --link option,
      we're done.  */
