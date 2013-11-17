@@ -838,7 +838,9 @@ copy_reg (char const *src_name, char const *dst_name,
          reset the context as per the default context, which has already been
          set according to the src.
          When using the mutually exclusive -Z option, then adjust the type of
-         the existing context according to the system default for the dest.  */
+         the existing context according to the system default for the dest.
+         Note we set the context here, _after_ the file is opened, lest the
+         new context disallow that.  */
       if ((x->set_security_context || x->preserve_security_context)
           && 0 <= dest_desc)
         {
@@ -2544,8 +2546,9 @@ copy_internal (char const *src_name, char const *dst_name,
         record_file (x->dest_info, dst_name, &sb);
     }
 
-  /* With -Z, set the context for existing files.  */
-  if (!new_dst && x->set_security_context)
+  /* With -Z, set the context for existing files.
+     Note this is done already for copy_reg() for reasons described therein. */
+  if (!new_dst && !x->copy_as_regular && x->set_security_context)
     restorecon (dst_name, 0, false);
 
   /* If we've just created a hard-link due to cp's --link option,
