@@ -2546,10 +2546,11 @@ copy_internal (char const *src_name, char const *dst_name,
         record_file (x->dest_info, dst_name, &sb);
     }
 
-  /* With -Z, set the context for existing files.
+  /* With -Z or --preserve=context, set the context for existing files.
      Note this is done already for copy_reg() for reasons described therein. */
-  if (!new_dst && !x->copy_as_regular && x->set_security_context)
-    restorecon (dst_name, 0, false);
+  if (!new_dst && !x->copy_as_regular
+      && (x->set_security_context || x->preserve_security_context))
+    restorecon (dst_name, 0, x->preserve_security_context);
 
   /* If we've just created a hard-link due to cp's --link option,
      we're done.  */
