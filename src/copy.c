@@ -513,6 +513,18 @@ copy_attr_free (struct error_context *ctx _GL_UNUSED,
 {
 }
 
+/* Exclude SELinux extended attributes that are otherwise handled,
+   and are problematic to copy again.  Also honor attributes
+   configured for exclusion in /etc/xattr.conf.
+   FIXME: Should we handle POSIX ACLs similarly?
+   Return zero to skip.  */
+static int
+check_selinux_attr (const char *name, struct error_context *ctx)
+{
+  return STRNCMP_LIT (name, "security.selinux")
+         && attr_copy_check_permissions (name, ctx);
+}
+
 /* If positive SRC_FD and DST_FD descriptors are passed,
    then copy by fd, otherwise copy by name.  */
 
@@ -523,6 +535,7 @@ copy_attr (char const *src_path, int src_fd,
   int ret;
   bool all_errors = (!x->data_copy_required || x->require_preserve_xattr);
   bool some_errors = (!all_errors && !x->reduce_diagnostics);
+  bool selinux_done = (x->preserve_security_context || x->set_security_context);
   struct error_context ctx =
   {
     .error = all_errors ? copy_attr_allerror : copy_attr_error,
@@ -530,10 +543,12 @@ copy_attr (char const *src_path, int src_fd,
     .quote_free = copy_attr_free
   };
   if (0 <= src_fd && 0 <= dst_fd)
-    ret = attr_copy_fd (src_path, src_fd, dst_path, dst_fd, 0,
+    ret = attr_copy_fd (src_path, src_fd, dst_path, dst_fd,
+                        selinux_done ? check_selinux_attr : NULL,
                         (all_errors || some_errors ? &ctx : NULL));
   else
-    ret = attr_copy_file (src_path, dst_path, 0,
+    ret = attr_copy_file (src_path, dst_path,
+                          selinux_done ? check_selinux_attr : NULL,
                           (all_errors || some_errors ? &ctx : NULL));
 
   return ret == 0;
