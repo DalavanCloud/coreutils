@@ -118,8 +118,9 @@ make_ancestor (char const *dir, char const *component, void *options)
 {
   struct mkdir_options const *o = options;
 
-  if (o->set_security_context)
-    defaultcon (dir, S_IFDIR);
+  if (o->set_security_context && defaultcon (dir, S_IFDIR) < 0)
+    error (0, errno, _("failed to set default creation context for %s"),
+           quote (dir));
 
   mode_t user_wx = S_IWUSR | S_IXUSR;
   bool self_denying_umask = (o->umask_value & user_wx) != 0;
@@ -145,11 +146,46 @@ static int
 process_dir (char *dir, struct savewd *wd, void *options)
 {
   struct mkdir_options const *o = options;
-  return (make_dir_parents (dir, wd, o->make_ancestor_function, options,
-                            o->mode, announce_mkdir,
-                            o->mode_bits, (uid_t) -1, (gid_t) -1, true)
-          ? EXIT_SUCCESS
-          : EXIT_FAILURE);
+  bool set_defaultcon = false;
+
+  /* If possible set context before DIR created.  */
+  if (o->set_security_context)
+    {
+      if (! o->make_ancestor_function)
+        set_defaultcon = true;
+      else
+        {
+          char *pdir = dir_name (dir);
+          struct stat st;
+          if (STREQ (pdir, ".")
+              || (stat (pdir, &st) == 0 && S_ISDIR (st.st_mode)))
+            set_defaultcon = true;
+          free (pdir);
+        }
+      if (set_defaultcon && defaultcon (dir, S_IFDIR) < 0)
+        error (0, errno, _("failed to set default creation context for %s"),
+               quote (dir));
+    }
+
+  int ret = (make_dir_parents (dir, wd, o->make_ancestor_function, options,
+                               o->mode, announce_mkdir,
+                               o->mode_bits, (uid_t) -1, (gid_t) -1, true)
+             ? EXIT_SUCCESS
+             : EXIT_FAILURE);
+
+  /* FIXME: Due to the current structure of make_dir_parents()
+     we don't have the facility to call defaultcon() before the
+     final component of DIR is created.  So for now, create the
+     final component with the context from previous component
+     and here we set the context for the final component. */
+  if (ret == EXIT_SUCCESS && o->set_security_context && ! set_defaultcon)
+    {
+      if (restorecon (last_component (dir), false, false) < 0)
+        error (0, errno, _("failed to set restore context for %s"),
+               quote (dir));
+    }
+
+  return ret;
 }
 
 int
@@ -220,6 +256,9 @@ main (int argc, char **argv)
       usage (EXIT_FAILURE);
     }
 
+  /* FIXME: This assumes mkdir() is done in the same process.
+     If that's not always the case we would need to call this
+     like we do when options.set_security_context == true.  */
   if (scontext)
     {
       int ret = 0;
