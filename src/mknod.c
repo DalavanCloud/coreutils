@@ -253,6 +253,8 @@ main (int argc, char **argv)
       break;
 
     case 'p':			/* 'pipe' */
+      if (set_security_context)
+        defaultcon (argv[optind], S_IFIFO);
       if (mkfifo (argv[optind], newmode) != 0)
         error (EXIT_FAILURE, errno, "%s", quote (argv[optind]));
       break;
