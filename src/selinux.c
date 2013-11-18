@@ -21,7 +21,6 @@
 #include <selinux/flask.h>
 #include <selinux/context.h>
 #include <sys/types.h>
-#include <libgen.h>
 
 #include "error.h"
 #include "system.h"
@@ -77,12 +76,12 @@ computecon (char const *path, mode_t mode, security_context_t * con)
   security_class_t tclass;
   int rc = -1;
 
-  char *dir = strdup (path);
+  char *dir = dir_name (path);
   if (!dir)
     goto quit;
   if (getcon (&scon) < 0)
     goto quit;
-  if (getfilecon (dirname ((char *) dir), &tcon) < 0)
+  if (getfilecon (dir, &tcon) < 0)
     goto quit;
   tclass = mode_to_security_class (mode);
   if (!tclass)
