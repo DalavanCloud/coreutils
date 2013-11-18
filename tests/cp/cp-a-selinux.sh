@@ -41,6 +41,45 @@ test -s err && fail=1   #there must be no stderr output for -a
 ls -Z e | grep $ctx || fail=1
 ls -Z f | grep $ctx || fail=1
 
+# Check restorecon (-Z) functionality for file and directory
+get_selinux_type() { ls -Zd "$1" | sed -n 's/.*:\(.*_t\):.*/\1/p'; }
+# Also make a dir with our known context
+mkdir c_d || framework_failure_
+chcon $ctx c_d || framework_failure_
+# Get the type of this known context for file and dir
+old_type_f=$(get_selinux_type c)
+old_type_d=$(get_selinux_type c_d)
+# Setup copies for manipulation with restorecon
+# and get the adjusted type for comparison
+cp -a c Z1 || fail=1
+cp -a c_d Z1_d || fail=1
+if restorecon Z1 Z1_d 2>/dev/null; then
+  new_type_f=$(get_selinux_type Z1)
+  new_type_d=$(get_selinux_type Z1_d)
+
+  # Ensure -Z sets the type like restorecon does
+  cp -Z c Z2 || fail=1
+  cpZ_type_f=$(get_selinux_type Z2)
+  test "$cpZ_type_f" = "$new_type_f" || fail=1
+
+  # Ensuze -Z overrides -a and that dirs are handled too
+  cp -aZ c Z3 || fail=1
+  cp -aZ c_d Z3_d || fail=1
+  cpaZ_type_f=$(get_selinux_type Z3)
+  cpaZ_type_d=$(get_selinux_type Z3_d)
+  test "$cpaZ_type_f" = "$new_type_f" || fail=1
+  test "$cpaZ_type_d" = "$new_type_d" || fail=1
+
+  # Ensure -Z sets the type for existing files
+  mkdir -p existing/c_d || framework_failure_
+  touch existing/c || framework_failure_
+  cp -aZ c c_d existing || fail=1
+  cpaZ_type_f=$(get_selinux_type existing/c)
+  cpaZ_type_d=$(get_selinux_type existing/c_d)
+  test "$cpaZ_type_f" = "$new_type_f" || fail=1
+  test "$cpaZ_type_d" = "$new_type_d" || fail=1
+fi
+
 skip=0
 # Create a file system, then mount it with the context=... option.
 dd if=/dev/zero of=blob bs=8192 count=200    || skip=1
