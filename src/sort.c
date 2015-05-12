@@ -3243,8 +3243,10 @@ keycompare_mb (const struct line *a, const struct line *b)
 
       if (ignore || translate)
         {
-          char *copy_a = (char *) xmalloc (lena + 1 + lenb + 1);
-          char *copy_b = copy_a + lena + 1;
+          if (SIZE_MAX - lenb - 2 < lena)
+            xalloc_die ();
+          char *copy_a = (char *) xnmalloc (lena + lenb + 2, MB_CUR_MAX);
+          char *copy_b = copy_a + lena * MB_CUR_MAX + 1;
           size_t new_len_a, new_len_b;
           size_t i, j;
 
