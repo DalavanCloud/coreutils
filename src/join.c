@@ -22,17 +22,31 @@
 #include <sys/types.h>
 #include <getopt.h>
 
+/* Get mbstate_t, mbrtowc(), mbrtowc(), wcwidth().  */
+#if HAVE_WCHAR_H
+# include <wchar.h>
+#endif
+
+/* Get iswblank(), towupper.  */
+#if HAVE_WCTYPE_H
+# include <wctype.h>
+#endif
+
 #include "system.h"
 #include "error.h"
 #include "fadvise.h"
 #include "hard-locale.h"
 #include "linebuffer.h"
-#include "memcasecmp.h"
 #include "quote.h"
 #include "stdio--.h"
 #include "xmemcoll.h"
 #include "xstrtol.h"
 #include "argmatch.h"
+
+/* Some systems, like BeOS, have multibyte encodings but lack mbstate_t.  */
+#if HAVE_MBRTOWC && defined mbstate_t
+# define mbrtowc(pwc, s, n, ps) (mbrtowc) (pwc, s, n, 0)
+#endif
 
 /* The official name of this program (e.g., no 'g' prefix).  */
 #define PROGRAM_NAME "join"
@@ -135,10 +149,12 @@ static struct outlist outlist_head;
 /* Last element in 'outlist', where a new element can be added.  */
 static struct outlist *outlist_end = &outlist_head;
 
-/* Tab character separating fields.  If negative, fields are separated
-   by any nonempty string of blanks, otherwise by exactly one
-   tab character whose value (when cast to unsigned char) equals TAB.  */
-static int tab = -1;
+/* Tab character separating fields.  If NULL, fields are separated
+   by any nonempty string of blanks.  */
+static char *tab = NULL;
+
+/* The number of bytes used for tab. */
+static size_t tablen = 0;
 
 /* If nonzero, check that the input is correctly ordered. */
 static enum
@@ -275,13 +291,14 @@ xfields (struct line *line)
   if (ptr == lim)
     return;
 
-  if (0 <= tab && tab != '\n')
+  if (tab != NULL)
     {
+      unsigned char t = tab[0];
       char *sep;
-      for (; (sep = memchr (ptr, tab, lim - ptr)) != NULL; ptr = sep + 1)
+      for (; (sep = memchr (ptr, t, lim - ptr)) != NULL; ptr = sep + 1)
         extract_field (line, ptr, sep - ptr);
     }
-  else if (tab < 0)
+   else
     {
       /* Skip leading blanks before the first field.  */
       while (isblank (to_uchar (*ptr)))
@@ -305,6 +322,147 @@ xfields (struct line *line)
   extract_field (line, ptr, lim - ptr);
 }
 
+#if HAVE_MBRTOWC
+static void
+xfields_multibyte (struct line *line)
+{
+  char *ptr = line->buf.buffer;
+  char const *lim = ptr + line->buf.length - 1;
+  wchar_t wc = 0;
+  size_t mblength = 1;
+  mbstate_t state, state_bak;
+
+  memset (&state, 0, sizeof (mbstate_t));
+
+  if (ptr >= lim)
+    return;
+
+  if (tab != NULL)
+    {
+      char *sep = ptr;
+      for (; ptr < lim; ptr = sep + mblength)
+	{
+	  sep = ptr;
+	  while (sep < lim)
+	    {
+	      state_bak = state;
+	      mblength = mbrtowc (&wc, sep, lim - sep + 1, &state);
+
+	      if (mblength == (size_t)-1 || mblength == (size_t)-2)
+		{
+		  mblength = 1;
+		  state = state_bak;
+		}
+	      mblength = (mblength < 1) ? 1 : mblength;
+
+	      if (mblength == tablen && !memcmp (sep, tab, mblength))
+		break;
+	      else
+		{
+		  sep += mblength;
+		  continue;
+		}
+	    }
+
+	  if (sep >= lim)
+	    break;
+
+	  extract_field (line, ptr, sep - ptr);
+	}
+    }
+  else
+    {
+      /* Skip leading blanks before the first field.  */
+      while(ptr < lim)
+      {
+        state_bak = state;
+        mblength = mbrtowc (&wc, ptr, lim - ptr + 1, &state);
+
+        if (mblength == (size_t)-1 || mblength == (size_t)-2)
+          {
+            mblength = 1;
+            state = state_bak;
+            break;
+          }
+        mblength = (mblength < 1) ? 1 : mblength;
+
+        if (!iswblank(wc))
+          break;
+        ptr += mblength;
+      }
+
+      do
+	{
+	  char *sep;
+	  state_bak = state;
+	  mblength = mbrtowc (&wc, ptr, lim - ptr + 1, &state);
+	  if (mblength == (size_t)-1 || mblength == (size_t)-2)
+	    {
+	      mblength = 1;
+	      state = state_bak;
+	      break;
+	    }
+	  mblength = (mblength < 1) ? 1 : mblength;
+
+	  sep = ptr + mblength;
+	  while (sep < lim)
+	    {
+	      state_bak = state;
+	      mblength = mbrtowc (&wc, sep, lim - sep + 1, &state);
+	      if (mblength == (size_t)-1 || mblength == (size_t)-2)
+		{
+		  mblength = 1;
+		  state = state_bak;
+		  break;
+		}
+	      mblength = (mblength < 1) ? 1 : mblength;
+
+	      if (iswblank (wc))
+		break;
+
+	      sep += mblength;
+	    }
+
+	  extract_field (line, ptr, sep - ptr);
+	  if (sep >= lim)
+	    return;
+
+	  state_bak = state;
+	  mblength = mbrtowc (&wc, sep, lim - sep + 1, &state);
+	  if (mblength == (size_t)-1 || mblength == (size_t)-2)
+	    {
+	      mblength = 1;
+	      state = state_bak;
+	      break;
+	    }
+	  mblength = (mblength < 1) ? 1 : mblength;
+
+	  ptr = sep + mblength;
+	  while (ptr < lim)
+	    {
+	      state_bak = state;
+	      mblength = mbrtowc (&wc, ptr, lim - ptr + 1, &state);
+	      if (mblength == (size_t)-1 || mblength == (size_t)-2)
+		{
+		  mblength = 1;
+		  state = state_bak;
+		  break;
+		}
+	      mblength = (mblength < 1) ? 1 : mblength;
+
+	      if (!iswblank (wc))
+		break;
+
+	      ptr += mblength;
+	    }
+	}
+      while (ptr < lim);
+    }
+
+  extract_field (line, ptr, lim - ptr);
+}
+#endif
+
 static void
 freeline (struct line *line)
 {
@@ -326,56 +484,133 @@ keycmp (struct line const *line1, struct line const *line2,
         size_t jf_1, size_t jf_2)
 {
   /* Start of field to compare in each file.  */
-  char *beg1;
-  char *beg2;
-
-  size_t len1;
-  size_t len2;		/* Length of fields to compare.  */
+  char *beg[2];
+  char *copy[2];
+  size_t len[2]; 	/* Length of fields to compare.  */
   int diff;
+  int i, j;
+  int mallocd = 0;
 
   if (jf_1 < line1->nfields)
     {
-      beg1 = line1->fields[jf_1].beg;
-      len1 = line1->fields[jf_1].len;
+      beg[0] = line1->fields[jf_1].beg;
+      len[0] = line1->fields[jf_1].len;
     }
   else
     {
-      beg1 = NULL;
-      len1 = 0;
+      beg[0] = NULL;
+      len[0] = 0;
     }
 
   if (jf_2 < line2->nfields)
     {
-      beg2 = line2->fields[jf_2].beg;
-      len2 = line2->fields[jf_2].len;
+      beg[1] = line2->fields[jf_2].beg;
+      len[1] = line2->fields[jf_2].len;
     }
   else
     {
-      beg2 = NULL;
-      len2 = 0;
+      beg[1] = NULL;
+      len[1] = 0;
     }
 
-  if (len1 == 0)
-    return len2 == 0 ? 0 : -1;
-  if (len2 == 0)
+  if (len[0] == 0)
+    return len[1] == 0 ? 0 : -1;
+  if (len[1] == 0)
     return 1;
 
   if (ignore_case)
     {
-      /* FIXME: ignore_case does not work with NLS (in particular,
-         with multibyte chars).  */
-      diff = memcasecmp (beg1, beg2, MIN (len1, len2));
+#ifdef HAVE_MBRTOWC
+      if (MB_CUR_MAX > 1)
+      {
+        size_t mblength;
+        wchar_t wc, uwc;
+        mbstate_t state, state_bak;
+
+        memset (&state, '\0', sizeof (mbstate_t));
+
+        for (i = 0; i < 2; i++)
+          {
+            mallocd = 1;
+            copy[i] = xmalloc (len[i] + 1);
+            memset (copy[i], '\0',len[i] + 1);
+
+            for (j = 0; j < MIN (len[0], len[1]);)
+              {
+                state_bak = state;
+                mblength = mbrtowc (&wc, beg[i] + j, len[i] - j, &state);
+
+                switch (mblength)
+                  {
+                  case (size_t) -1:
+                  case (size_t) -2:
+                    state = state_bak;
+                    /* Fall through */
+                  case 0:
+                    mblength = 1;
+                    break;
+
+                  default:
+                    uwc = towupper (wc);
+
+                    if (uwc != wc)
+                      {
+                        mbstate_t state_wc;
+                        size_t mblen;
+
+                        memset (&state_wc, '\0', sizeof (mbstate_t));
+                        mblen = wcrtomb (copy[i] + j, uwc, &state_wc);
+                        assert (mblen != (size_t)-1);
+                      }
+                    else
+                      memcpy (copy[i] + j, beg[i] + j, mblength);
+                  }
+                j += mblength;
+              }
+            copy[i][j] = '\0';
+          }
+      }
+      else
+#endif
+      {
+        for (i = 0; i < 2; i++)
+          {
+            mallocd = 1;
+            copy[i] = xmalloc (len[i] + 1);
+
+            for (j = 0; j < MIN (len[0], len[1]); j++)
+              copy[i][j] = toupper (beg[i][j]);
+
+            copy[i][j] = '\0';
+          }
+      }
     }
   else
     {
-      if (hard_LC_COLLATE)
-        return xmemcoll (beg1, len1, beg2, len2);
-      diff = memcmp (beg1, beg2, MIN (len1, len2));
+      copy[0] = beg[0];
+      copy[1] = beg[1];
     }
+
+  if (hard_LC_COLLATE)
+    {
+      diff = xmemcoll ((char *) copy[0], len[0], (char *) copy[1], len[1]);
+
+      if (mallocd)
+        for (i = 0; i < 2; i++)
+          free (copy[i]);
+
+      return diff;
+    }
+  diff = memcmp (copy[0], copy[1], MIN (len[0], len[1]));
+
+  if (mallocd)
+    for (i = 0; i < 2; i++)
+      free (copy[i]);
+
 
   if (diff)
     return diff;
-  return len1 < len2 ? -1 : len1 != len2;
+  return len[0] - len[1];
 }
 
 /* Check that successive input lines PREV and CURRENT from input file
@@ -467,6 +702,11 @@ get_line (FILE *fp, struct line **linep, int which)
     }
   ++line_no[which - 1];
 
+#if HAVE_MBRTOWC
+  if (MB_CUR_MAX > 1)
+    xfields_multibyte (line);
+  else
+#endif
   xfields (line);
 
   if (prevline[which - 1])
@@ -566,21 +806,28 @@ prfield (size_t n, struct line const *line)
 
 /* Output all the fields in line, other than the join field.  */
 
+#define PUT_TAB_CHAR							\
+  do									\
+    {									\
+      (tab != NULL) ?							\
+	fwrite(tab, sizeof(char), tablen, stdout) : putchar (' ');	\
+    }									\
+  while (0)
+
 static void
 prfields (struct line const *line, size_t join_field, size_t autocount)
 {
   size_t i;
   size_t nfields = autoformat ? autocount : line->nfields;
-  char output_separator = tab < 0 ? ' ' : tab;
 
   for (i = 0; i < join_field && i < nfields; ++i)
     {
-      putchar (output_separator);
+      PUT_TAB_CHAR;
       prfield (i, line);
     }
   for (i = join_field + 1; i < nfields; ++i)
     {
-      putchar (output_separator);
+      PUT_TAB_CHAR;
       prfield (i, line);
     }
 }
@@ -591,7 +838,6 @@ static void
 prjoin (struct line const *line1, struct line const *line2)
 {
   const struct outlist *outlist;
-  char output_separator = tab < 0 ? ' ' : tab;
   size_t field;
   struct line const *line;
 
@@ -625,7 +871,7 @@ prjoin (struct line const *line1, struct line const *line2)
           o = o->next;
           if (o == NULL)
             break;
-          putchar (output_separator);
+          PUT_TAB_CHAR;
         }
       putchar (eolchar);
     }
@@ -1103,21 +1349,46 @@ main (int argc, char **argv)
 
         case 't':
           {
-            unsigned char newtab = optarg[0];
+            char *newtab = NULL;
+            size_t newtablen;
+            newtab = xstrdup (optarg);
+#if HAVE_MBRTOWC
+            if (MB_CUR_MAX > 1)
+              {
+                mbstate_t state;
+
+                memset (&state, 0, sizeof (mbstate_t));
+                newtablen = mbrtowc (NULL, newtab,
+                                     strnlen (newtab, MB_LEN_MAX),
+                                     &state);
+                if (newtablen == (size_t) 0
+                    || newtablen == (size_t) -1
+                    || newtablen == (size_t) -2)
+                  newtablen = 1;
+              }
+            else
+#endif
+              newtablen = 1;
             if (! newtab)
-              newtab = '\n'; /* '' => process the whole line.  */
+            {
+              newtab = (char*)"\n"; /* '' => process the whole line.  */
+            }
             else if (optarg[1])
               {
-                if (STREQ (optarg, "\\0"))
-                  newtab = '\0';
-                else
-                  error (EXIT_FAILURE, 0, _("multi-character tab %s"),
-                         quote (optarg));
+                if (newtablen == 1 && newtab[1])
+                {
+                  if (STREQ (newtab, "\\0"))
+                     newtab[0] = '\0';
+                }
               }
-            if (0 <= tab && tab != newtab)
-              error (EXIT_FAILURE, 0, _("incompatible tabs"));
+            if (tab != NULL && strcmp (tab, newtab))
+              {
+                free (newtab);
+                error (EXIT_FAILURE, 0, _("incompatible tabs"));
+              }
             tab = newtab;
-          }
+            tablen = newtablen;
+           }
           break;
 
         case 'z':

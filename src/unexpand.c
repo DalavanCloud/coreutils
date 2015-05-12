@@ -38,11 +38,28 @@
 #include <stdio.h>
 #include <getopt.h>
 #include <sys/types.h>
+
+/* Get mbstate_t, mbrtowc(), wcwidth(). */
+#if HAVE_WCHAR_H
+# include <wchar.h>
+#endif
+
 #include "system.h"
 #include "error.h"
 #include "fadvise.h"
 #include "quote.h"
 #include "xstrndup.h"
+
+/* MB_LEN_MAX is incorrectly defined to be 1 in at least one GCC
+      installation; work around this configuration error.  */
+#if !defined MB_LEN_MAX || MB_LEN_MAX < 2
+# define MB_LEN_MAX 16
+#endif
+
+/* Some systems, like BeOS, have multibyte encodings but lack mbstate_t.  */
+#if HAVE_MBRTOWC && defined mbstate_t
+# define mbrtowc(pwc, s, n, ps) (mbrtowc) (pwc, s, n, 0)
+#endif
 
 /* The official name of this program (e.g., no 'g' prefix).  */
 #define PROGRAM_NAME "unexpand"
@@ -102,6 +119,210 @@ static struct option const longopts[] =
   {GETOPT_VERSION_OPTION_DECL},
   {NULL, 0, NULL, 0}
 };
+
+static FILE *next_file (FILE *fp);
+
+#if HAVE_MBRTOWC
+static void
+unexpand_multibyte (void)
+{
+  FILE *fp;			/* Input stream. */
+  mbstate_t i_state;		/* Current shift state of the input stream. */
+  mbstate_t i_state_bak;	/* Back up the I_STATE. */
+  mbstate_t o_state;		/* Current shift state of the output stream. */
+  char buf[MB_LEN_MAX + BUFSIZ];  /* For spooling a read byte sequence. */
+  char *bufpos = buf;			/* Next read position of BUF. */
+  size_t buflen = 0;		/* The length of the byte sequence in buf. */
+  wint_t wc;			/* A gotten wide character. */
+  size_t mblength;		/* The byte size of a multibyte character
+				   which shows as same character as WC. */
+  bool prev_tab = false;
+
+  /* Index in `tab_list' of next tabstop: */
+  int tab_index = 0;		/* For calculating width of pending tabs. */
+  int print_tab_index = 0;	/* For printing as many tabs as possible. */
+  unsigned int column = 0;	/* Column on screen of next char. */
+  int next_tab_column;		/* Column the next tab stop is on. */
+  int convert = 1;		/* If nonzero, perform translations. */
+  unsigned int pending = 0;	/* Pending columns of blanks. */
+
+  fp = next_file ((FILE *) NULL);
+  if (fp == NULL)
+    return;
+
+  memset (&o_state, '\0', sizeof(mbstate_t));
+  memset (&i_state, '\0', sizeof(mbstate_t));
+
+  for (;;)
+    {
+      if (buflen < MB_LEN_MAX && !feof(fp) && !ferror(fp))
+	{
+	  memmove (buf, bufpos, buflen);
+	  buflen += fread (buf + buflen, sizeof(char), BUFSIZ, fp);
+	  bufpos = buf;
+	}
+
+      /* Get a wide character. */
+      if (buflen < 1)
+	{
+	  mblength = 1;
+	  wc = WEOF;
+	}
+      else
+	{
+	  i_state_bak = i_state;
+	  mblength = mbrtowc ((wchar_t *)&wc, bufpos, buflen, &i_state);
+	}
+
+      if (mblength == (size_t)-1 || mblength == (size_t)-2)
+	{
+	  i_state = i_state_bak;
+	  wc = L'\0';
+	}
+
+      if (wc == L' ' && convert && column < INT_MAX)
+	{
+	  ++pending;
+	  ++column;
+	}
+      else if (wc == L'\t' && convert)
+	{
+	  if (tab_size == 0)
+	    {
+	      /* Do not let tab_index == first_free_tab;
+		 stop when it is 1 less. */
+	      while (tab_index < first_free_tab - 1
+		  && column >= tab_list[tab_index])
+		tab_index++;
+	      next_tab_column = tab_list[tab_index];
+	      if (tab_index < first_free_tab - 1)
+		tab_index++;
+	      if (column >= next_tab_column)
+		{
+		  convert = 0;	/* Ran out of tab stops. */
+		  goto flush_pend_mb;
+		}
+	    }
+	  else
+	    {
+	      next_tab_column = column + tab_size - column % tab_size;
+	    }
+	  pending += next_tab_column - column;
+	  column = next_tab_column;
+	}
+      else
+	{
+flush_pend_mb:
+	  /* Flush pending spaces.  Print as many tabs as possible,
+	     then print the rest as spaces. */
+	  if (pending == 1 && column != 1 && !prev_tab)
+	    {
+	      putchar (' ');
+	      pending = 0;
+	    }
+	  column -= pending;
+	  while (pending > 0)
+	    {
+	      if (tab_size == 0)
+		{
+		  /* Do not let print_tab_index == first_free_tab;
+		     stop when it is 1 less. */
+		  while (print_tab_index < first_free_tab - 1
+		      && column >= tab_list[print_tab_index])
+		    print_tab_index++;
+		  next_tab_column = tab_list[print_tab_index];
+		  if (print_tab_index < first_free_tab - 1)
+		    print_tab_index++;
+		}
+	      else
+		{
+		  next_tab_column =
+		    column + tab_size - column % tab_size;
+		}
+	      if (next_tab_column - column <= pending)
+		{
+		  putchar ('\t');
+		  pending -= next_tab_column - column;
+		  column = next_tab_column;
+		}
+	      else
+		{
+		  --print_tab_index;
+		  column += pending;
+		  while (pending != 0)
+		    {
+		      putchar (' ');
+		      pending--;
+		    }
+		}
+	    }
+
+	  if (wc == WEOF)
+	    {
+	      fp = next_file (fp);
+	      if (fp == NULL)
+		break;          /* No more files. */
+	      else
+		{
+		  memset (&i_state, '\0', sizeof(mbstate_t));
+		  continue;
+		}
+	    }
+
+	  if (mblength == (size_t)-1 || mblength == (size_t)-2)
+	    {
+	      if (convert)
+		{
+		  ++column;
+		  if (convert_entire_line == 0)
+		    convert = 0;
+		}
+	      mblength = 1;
+	      putchar (buf[0]);
+	    }
+	  else if (mblength == 0)
+	    {
+	      if (convert && convert_entire_line == 0)
+		convert = 0;
+	      mblength = 1;
+	      putchar ('\0');
+	    }
+	  else
+	    {
+	      if (convert)
+		{
+		  if (wc == L'\b')
+		    {
+		      if (column > 0)
+			--column;
+		    }
+		  else
+		    {
+		      int width;            /* The width of WC. */
+
+		      width = wcwidth (wc);
+		      column += (width > 0) ? width : 0;
+		      if (convert_entire_line == 0)
+			convert = 0;
+		    }
+		}
+
+	      if (wc == L'\n')
+		{
+		  tab_index = print_tab_index = 0;
+		  column = pending = 0;
+		  convert = 1;
+		}
+	      fwrite (bufpos, sizeof(char), mblength, stdout);
+	    }
+	}
+      prev_tab = wc == L'\t';
+      buflen -= mblength;
+      bufpos += mblength;
+    }
+}
+#endif
+
 
 void
 usage (int status)
@@ -523,7 +744,12 @@ main (int argc, char **argv)
 
   file_list = (optind < argc ? &argv[optind] : stdin_argv);
 
-  unexpand ();
+#if HAVE_MBRTOWC
+  if (MB_CUR_MAX > 1)
+    unexpand_multibyte ();
+  else
+#endif
+    unexpand ();
 
   if (have_read_stdin && fclose (stdin) != 0)
     error (EXIT_FAILURE, errno, "-");

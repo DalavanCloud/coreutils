@@ -21,6 +21,17 @@
 #include <getopt.h>
 #include <sys/types.h>
 
+/* Get mbstate_t, mbrtowc(). */
+#if HAVE_WCHAR_H
+# include <wchar.h>
+#endif
+
+/* Get isw* functions. */
+#if HAVE_WCTYPE_H
+# include <wctype.h>
+#endif
+#include <assert.h>
+
 #include "system.h"
 #include "argmatch.h"
 #include "linebuffer.h"
@@ -32,7 +43,19 @@
 #include "stdio--.h"
 #include "xmemcoll.h"
 #include "xstrtol.h"
-#include "memcasecmp.h"
+#include "xmemcoll.h"
+
+/* MB_LEN_MAX is incorrectly defined to be 1 in at least one GCC
+   installation; work around this configuration error.  */
+#if !defined MB_LEN_MAX || MB_LEN_MAX < 2
+# define MB_LEN_MAX 16
+#endif
+
+/* Some systems, like BeOS, have multibyte encodings but lack mbstate_t.  */
+#if HAVE_MBRTOWC && defined mbstate_t
+# define mbrtowc(pwc, s, n, ps) (mbrtowc) (pwc, s, n, 0)
+#endif
+
 
 /* The official name of this program (e.g., no 'g' prefix).  */
 #define PROGRAM_NAME "uniq"
@@ -143,6 +166,10 @@ enum
   GROUP_OPTION = CHAR_MAX + 1
 };
 
+/* Function pointers. */
+static char *
+(*find_field) (struct linebuffer *line);
+
 static struct option const longopts[] =
 {
   {"count", no_argument, NULL, 'c'},
@@ -251,7 +278,7 @@ size_opt (char const *opt, char const *msgid)
    return a pointer to the beginning of the line's field to be compared. */
 
 static char * _GL_ATTRIBUTE_PURE
-find_field (struct linebuffer const *line)
+find_field_uni (struct linebuffer *line)
 {
   size_t count;
   char const *lp = line->buffer;
@@ -271,6 +298,83 @@ find_field (struct linebuffer const *line)
   return line->buffer + i;
 }
 
+#if HAVE_MBRTOWC
+
+# define MBCHAR_TO_WCHAR(WC, MBLENGTH, LP, POS, SIZE, STATEP, CONVFAIL)  \
+  do                                                                        \
+    {                                                                        \
+      mbstate_t state_bak;                                                \
+                                                                        \
+      CONVFAIL = 0;                                                        \
+      state_bak = *STATEP;                                                \
+                                                                        \
+      MBLENGTH = mbrtowc (&WC, LP + POS, SIZE - POS, STATEP);                \
+                                                                        \
+      switch (MBLENGTH)                                                        \
+        {                                                                \
+        case (size_t)-2:                                                \
+        case (size_t)-1:                                                \
+          *STATEP = state_bak;                                                \
+          CONVFAIL++;                                                        \
+          /* Fall through */                                                \
+        case 0:                                                                \
+          MBLENGTH = 1;                                                        \
+        }                                                                \
+    }                                                                        \
+  while (0)
+
+static char *
+find_field_multi (struct linebuffer *line)
+{
+  size_t count;
+  char *lp = line->buffer;
+  size_t size = line->length - 1;
+  size_t pos;
+  size_t mblength;
+  wchar_t wc;
+  mbstate_t *statep;
+  int convfail = 0;
+
+  pos = 0;
+  statep = &(line->state);
+
+  /* skip fields. */
+  for (count = 0; count < skip_fields && pos < size; count++)
+    {
+      while (pos < size)
+        {
+          MBCHAR_TO_WCHAR (wc, mblength, lp, pos, size, statep, convfail);
+
+          if (convfail || !iswblank (wc))
+            {
+              pos += mblength;
+              break;
+            }
+          pos += mblength;
+        }
+
+      while (pos < size)
+        {
+          MBCHAR_TO_WCHAR (wc, mblength, lp, pos, size, statep, convfail);
+
+          if (!convfail && iswblank (wc))
+            break;
+
+          pos += mblength;
+        }
+    }
+
+  /* skip fields. */
+  for (count = 0; count < skip_chars && pos < size; count++)
+    {
+      MBCHAR_TO_WCHAR (wc, mblength, lp, pos, size, statep, convfail);
+      pos += mblength;
+    }
+
+  return lp + pos;
+}
+#endif
+
 /* Return false if two strings OLD and NEW match, true if not.
    OLD and NEW point not to the beginnings of the lines
    but rather to the beginnings of the fields to compare.
@@ -279,6 +383,8 @@ find_field (struct linebuffer const *line)
 static bool
 different (char *old, char *new, size_t oldlen, size_t newlen)
 {
+  char *copy_old, *copy_new;
+
   if (check_chars < oldlen)
     oldlen = check_chars;
   if (check_chars < newlen)
@@ -286,14 +392,103 @@ different (char *old, char *new, size_t oldlen, size_t newlen)
 
   if (ignore_case)
     {
-      /* FIXME: This should invoke strcoll somehow.  */
-      return oldlen != newlen || memcasecmp (old, new, oldlen);
+      size_t i;
+
+      copy_old = xmalloc (oldlen + 1);
+      copy_new = xmalloc (oldlen + 1);
+
+      for (i = 0; i < oldlen; i++)
+        {
+          copy_old[i] = toupper (old[i]);
+          copy_new[i] = toupper (new[i]);
+        }
+      bool rc = xmemcoll (copy_old, oldlen, copy_new, newlen);
+      free (copy_old);
+      free (copy_new);
+      return rc;
     }
-  else if (hard_LC_COLLATE)
-    return xmemcoll (old, oldlen, new, newlen) != 0;
   else
-    return oldlen != newlen || memcmp (old, new, oldlen);
+    {
+      copy_old = (char *)old;
+      copy_new = (char *)new;
+    }
+
+  return xmemcoll (copy_old, oldlen, copy_new, newlen);
+
 }
+
+#if HAVE_MBRTOWC
+static int
+different_multi (const char *old, const char *new, size_t oldlen, size_t newlen, mbstate_t oldstate, mbstate_t newstate)
+{
+  size_t i, j, chars;
+  const char *str[2];
+  char *copy[2];
+  size_t len[2];
+  mbstate_t state[2];
+  size_t mblength;
+  wchar_t wc, uwc;
+  mbstate_t state_bak;
+
+  str[0] = old;
+  str[1] = new;
+  len[0] = oldlen;
+  len[1] = newlen;
+  state[0] = oldstate;
+  state[1] = newstate;
+
+  for (i = 0; i < 2; i++)
+    {
+      copy[i] = xmalloc (len[i] + 1);
+      memset (copy[i], '\0', len[i] + 1);
+
+      for (j = 0, chars = 0; j < len[i] && chars < check_chars; chars++)
+        {
+          state_bak = state[i];
+          mblength = mbrtowc (&wc, str[i] + j, len[i] - j, &(state[i]));
+
+          switch (mblength)
+            {
+            case (size_t)-1:
+            case (size_t)-2:
+              state[i] = state_bak;
+              /* Fall through */
+            case 0:
+              mblength = 1;
+              break;
+
+            default:
+              if (ignore_case)
+                {
+                  uwc = towupper (wc);
+
+                  if (uwc != wc)
+                    {
+                      mbstate_t state_wc;
+                      size_t mblen;
+
+                      memset (&state_wc, '\0', sizeof(mbstate_t));
+                      mblen = wcrtomb (copy[i] + j, uwc, &state_wc);
+                      assert (mblen != (size_t)-1);
+                    }
+                  else
+                    memcpy (copy[i] + j, str[i] + j, mblength);
+                }
+              else
+                memcpy (copy[i] + j, str[i] + j, mblength);
+            }
+          j += mblength;
+        }
+      copy[i][j] = '\0';
+      len[i] = j;
+    }
+  int rc = xmemcoll (copy[0], len[0], copy[1], len[1]);
+  free (copy[0]);
+  free (copy[1]);
+  return rc;
+
+}
+#endif
 
 /* Output the line in linebuffer LINE to standard output
    provided that the switches say it should be output.
@@ -358,19 +553,38 @@ check_file (const char *infile, const char *outfile, char delimiter)
       char *prevfield IF_LINT ( = NULL);
       size_t prevlen IF_LINT ( = 0);
       bool first_group_printed = false;
+#if HAVE_MBRTOWC
+      mbstate_t prevstate;
+
+      memset (&prevstate, '\0', sizeof (mbstate_t));
+#endif
 
       while (!feof (stdin))
         {
           char *thisfield;
           size_t thislen;
           bool new_group;
+#if HAVE_MBRTOWC
+          mbstate_t thisstate;
+#endif
 
           if (readlinebuffer_delim (thisline, stdin, delimiter) == 0)
             break;
 
           thisfield = find_field (thisline);
           thislen = thisline->length - 1 - (thisfield - thisline->buffer);
+#if HAVE_MBRTOWC
+          if (MB_CUR_MAX > 1)
+            {
+              thisstate = thisline->state;
 
+              new_group = (prevline->length == 0
+                           || different_multi (thisfield, prevfield,
+                                               thislen, prevlen,
+                                               thisstate, prevstate));
+            }
+          else
+#endif
           new_group = (prevline->length == 0
                        || different (thisfield, prevfield, thislen, prevlen));
 
@@ -388,6 +602,10 @@ check_file (const char *infile, const char *outfile, char delimiter)
               SWAP_LINES (prevline, thisline);
               prevfield = thisfield;
               prevlen = thislen;
+#if HAVE_MBRTOWC
+              if (MB_CUR_MAX > 1)
+                prevstate = thisstate;
+#endif
               first_group_printed = true;
             }
         }
@@ -400,17 +618,26 @@ check_file (const char *infile, const char *outfile, char delimiter)
       size_t prevlen;
       uintmax_t match_count = 0;
       bool first_delimiter = true;
+#if HAVE_MBRTOWC
+      mbstate_t prevstate;
+#endif
 
       if (readlinebuffer_delim (prevline, stdin, delimiter) == 0)
         goto closefiles;
       prevfield = find_field (prevline);
       prevlen = prevline->length - 1 - (prevfield - prevline->buffer);
+#if HAVE_MBRTOWC
+      prevstate = prevline->state;
+#endif
 
       while (!feof (stdin))
         {
           bool match;
           char *thisfield;
           size_t thislen;
+#if HAVE_MBRTOWC
+          mbstate_t thisstate = thisline->state;
+#endif
           if (readlinebuffer_delim (thisline, stdin, delimiter) == 0)
             {
               if (ferror (stdin))
@@ -419,6 +646,14 @@ check_file (const char *infile, const char *outfile, char delimiter)
             }
           thisfield = find_field (thisline);
           thislen = thisline->length - 1 - (thisfield - thisline->buffer);
+#if HAVE_MBRTOWC
+          if (MB_CUR_MAX > 1)
+            {
+              match = !different_multi (thisfield, prevfield,
+                                thislen, prevlen, thisstate, prevstate);
+            }
+          else
+#endif
           match = !different (thisfield, prevfield, thislen, prevlen);
           match_count += match;
 
@@ -451,6 +686,9 @@ check_file (const char *infile, const char *outfile, char delimiter)
               SWAP_LINES (prevline, thisline);
               prevfield = thisfield;
               prevlen = thislen;
+#if HAVE_MBRTOWC
+              prevstate = thisstate;
+#endif
               if (!match)
                 match_count = 0;
             }
@@ -496,6 +734,19 @@ main (int argc, char **argv)
   hard_LC_COLLATE = hard_locale (LC_COLLATE);
 
   atexit (close_stdout);
+
+#if HAVE_MBRTOWC
+  if (MB_CUR_MAX > 1)
+    {
+      find_field = find_field_multi;
+    }
+  else
+#endif
+    {
+      find_field = find_field_uni;
+    }
+
+
 
   skip_chars = 0;
   skip_fields = 0;

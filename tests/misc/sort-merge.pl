@@ -26,6 +26,15 @@ my $prog = 'sort';
 # Turn off localization of executable's output.
 @ENV{qw(LANGUAGE LANG LC_ALL)} = ('C') x 3;
 
+my $mb_locale;
+# uncommented according to upstream commit enabling multibyte paths
+$mb_locale = $ENV{LOCALE_FR_UTF8};
+! defined $mb_locale || $mb_locale eq 'none'
+ and $mb_locale = 'C';
+
+my $try = "Try \`$prog --help' for more information.\n";
+my $inval = "$prog: invalid byte, character or field list\n$try";
+
 # three empty files and one that says 'foo'
 my @inputs = (+(map{{IN=> {"empty$_"=> ''}}}1..3), {IN=> {foo=> "foo\n"}});
 
@@ -76,6 +85,39 @@ my @Tests =
      ['batch-size', "--batch-size=16 -T$badtmp", {IN=> {big=> $big_input}},
         {OUT=>$big_input}],
     );
+
+# Add _POSIX2_VERSION=199209 to the environment of each test
+# that uses an old-style option like +1.
+if ($mb_locale ne 'C')
+  {
+    # Duplicate each test vector, appending "-mb" to the test name and
+    # inserting {ENV => "LC_ALL=$mb_locale"} in the copy, so that we
+    # provide coverage for the distro-added multi-byte code paths.
+    my @new;
+    foreach my $t (@Tests)
+      {
+        my @new_t = @$t;
+        my $test_name = shift @new_t;
+
+        # Depending on whether sort is multi-byte-patched,
+        # it emits different diagnostics:
+        #   non-MB: invalid byte or field list
+        #   MB:     invalid byte, character or field list
+        # Adjust the expected error output accordingly.
+        if (grep {ref $_ eq 'HASH' && exists $_->{ERR} && $_->{ERR} eq $inval}
+            (@new_t))
+          {
+            my $sub = {ERR_SUBST => 's/, character//'};
+            push @new_t, $sub;
+            push @$t, $sub;
+          }
+        next if ($test_name =~ "nmerge-.");
+        push @new, ["$test_name-mb", @new_t, {ENV => "LC_ALL=$mb_locale"}];
+      }
+    push @Tests, @new;
+  }
+
+@Tests = triple_test \@Tests;
 
 my $save_temps = $ENV{DEBUG};
 my $verbose = $ENV{VERBOSE};

@@ -37,11 +37,33 @@
 #include <stdio.h>
 #include <getopt.h>
 #include <sys/types.h>
+
+/* Get mbstate_t, mbrtowc(), wcwidth(). */
+#if HAVE_WCHAR_H
+# include <wchar.h>
+#endif
+
+/* Get iswblank(). */
+#if HAVE_WCTYPE_H
+# include <wctype.h>
+#endif
+
 #include "system.h"
 #include "error.h"
 #include "fadvise.h"
 #include "quote.h"
 #include "xstrndup.h"
+
+/* MB_LEN_MAX is incorrectly defined to be 1 in at least one GCC
+   installation; work around this configuration error.  */
+#if !defined MB_LEN_MAX || MB_LEN_MAX < 2
+# define MB_LEN_MAX 16
+#endif
+
+/* Some systems, like BeOS, have multibyte encodings but lack mbstate_t.  */
+#if HAVE_MBRTOWC && defined mbstate_t
+# define mbrtowc(pwc, s, n, ps) (mbrtowc) (pwc, s, n, 0)
+#endif
 
 /* The official name of this program (e.g., no 'g' prefix).  */
 #define PROGRAM_NAME "expand"
@@ -357,6 +379,142 @@ expand (void)
     }
 }
 
+#if HAVE_MBRTOWC
+static void
+expand_multibyte (void)
+{
+  FILE *fp;			/* Input strem. */
+  mbstate_t i_state;		/* Current shift state of the input stream. */
+  mbstate_t i_state_bak;	/* Back up the I_STATE. */
+  mbstate_t o_state;		/* Current shift state of the output stream. */
+  char buf[MB_LEN_MAX + BUFSIZ];  /* For spooling a read byte sequence. */
+  char *bufpos = buf;			/* Next read position of BUF. */
+  size_t buflen = 0;		/* The length of the byte sequence in buf. */
+  wchar_t wc;			/* A gotten wide character. */
+  size_t mblength;		/* The byte size of a multibyte character
+				   which shows as same character as WC. */
+  int tab_index = 0;		/* Index in `tab_list' of next tabstop. */
+  int column = 0;		/* Column on screen of the next char. */
+  int next_tab_column;		/* Column the next tab stop is on. */
+  int convert = 1;		/* If nonzero, perform translations. */
+
+  fp = next_file ((FILE *) NULL);
+  if (fp == NULL)
+    return;
+
+  memset (&o_state, '\0', sizeof(mbstate_t));
+  memset (&i_state, '\0', sizeof(mbstate_t));
+
+  for (;;)
+    {
+      /* Refill the buffer BUF. */
+      if (buflen < MB_LEN_MAX && !feof(fp) && !ferror(fp))
+	{
+	  memmove (buf, bufpos, buflen);
+	  buflen += fread (buf + buflen, sizeof(char), BUFSIZ, fp);
+	  bufpos = buf;
+	}
+
+      /* No character is left in BUF. */
+      if (buflen < 1)
+	{
+	  fp = next_file (fp);
+
+	  if (fp == NULL)
+	    break;		/* No more files. */
+	  else
+	    {
+	      memset (&i_state, '\0', sizeof(mbstate_t));
+	      continue;
+	    }
+	}
+
+      /* Get a wide character. */
+      i_state_bak = i_state;
+      mblength = mbrtowc (&wc, bufpos, buflen, &i_state);
+
+      switch (mblength)
+	{
+	case (size_t)-1:	/* illegal byte sequence. */
+	case (size_t)-2:
+	  mblength = 1;
+	  i_state = i_state_bak;
+	  if (convert)
+	    {
+	      ++column;
+	      if (convert_entire_line == 0 && !isblank(*bufpos))
+		convert = 0;
+	    }
+	  putchar (*bufpos);
+	  break;
+
+	case 0:		/* null. */
+	  mblength = 1;
+	  if (convert && convert_entire_line == 0)
+	    convert = 0;
+	  putchar ('\0');
+	  break;
+
+	default:
+	  if (wc == L'\n')   /* LF. */
+	    {
+	      tab_index = 0;
+	      column = 0;
+	      convert = 1;
+	      putchar ('\n');
+	    }
+	  else if (wc == L'\t' && convert)	/* Tab. */
+	    {
+	      if (tab_size == 0)
+		{
+		  /* Do not let tab_index == first_free_tab;
+		     stop when it is 1 less. */
+		  while (tab_index < first_free_tab - 1
+		      && column >= tab_list[tab_index])
+		    tab_index++;
+		  next_tab_column = tab_list[tab_index];
+		  if (tab_index < first_free_tab - 1)
+		    tab_index++;
+		  if (column >= next_tab_column)
+		    next_tab_column = column + 1;
+		}
+	      else
+		next_tab_column = column + tab_size - column % tab_size;
+
+	      while (column < next_tab_column)
+		{
+		  putchar (' ');
+		  ++column;
+		}
+	    }
+	  else  /* Others. */
+	    {
+	      if (convert)
+		{
+		  if (wc == L'\b')
+		    {
+		      if (column > 0)
+			--column;
+		    }
+		  else
+		    {
+		      int width;		/* The width of WC. */
+
+		      width = wcwidth (wc);
+		      column += (width > 0) ? width : 0;
+		      if (convert_entire_line == 0 && !iswblank(wc))
+			convert = 0;
+		    }
+		}
+	      fwrite (bufpos, sizeof(char), mblength, stdout);
+	    }
+	}
+      buflen -= mblength;
+      bufpos += mblength;
+    }
+}
+#endif
+
 int
 main (int argc, char **argv)
 {
@@ -421,7 +579,12 @@ main (int argc, char **argv)
 
   file_list = (optind < argc ? &argv[optind] : stdin_argv);
 
-  expand ();
+#if HAVE_MBRTOWC
+  if (MB_CUR_MAX > 1)
+    expand_multibyte ();
+  else
+#endif
+    expand ();
 
   if (have_read_stdin && fclose (stdin) != 0)
     error (EXIT_FAILURE, errno, "-");

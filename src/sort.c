@@ -29,6 +29,14 @@
 #include <sys/wait.h>
 #include <signal.h>
 #include <assert.h>
+#if HAVE_WCHAR_H
+# include <wchar.h>
+#endif
+/* Get isw* functions. */
+#if HAVE_WCTYPE_H
+# include <wctype.h>
+#endif
+
 #include "system.h"
 #include "argmatch.h"
 #include "error.h"
@@ -164,13 +172,38 @@ static int decimal_point;
 /* Thousands separator; if -1, then there isn't one.  */
 static int thousands_sep;
 
+/* True if -f is specified.  */
+static bool folding;
+
 /* Nonzero if the corresponding locales are hard.  */
 static bool hard_LC_COLLATE;
-#if HAVE_NL_LANGINFO
+#if HAVE_LANGINFO_CODESET
 static bool hard_LC_TIME;
 #endif
 
 #define NONZERO(x) ((x) != 0)
+
+/* get a multibyte character's byte length. */
+#define GET_BYTELEN_OF_CHAR(LIM, PTR, MBLENGTH, STATE)                        \
+  do                                                                        \
+    {                                                                        \
+      wchar_t wc;                                                        \
+      mbstate_t state_bak;                                                \
+                                                                        \
+      state_bak = STATE;                                                \
+      mblength = mbrtowc (&wc, PTR, LIM - PTR, &STATE);                        \
+                                                                        \
+      switch (MBLENGTH)                                                        \
+        {                                                                \
+        case (size_t)-1:                                                \
+        case (size_t)-2:                                                \
+          STATE = state_bak;                                                \
+                /* Fall through. */                                        \
+        case 0:                                                                \
+          MBLENGTH = 1;                                                        \
+      }                                                                        \
+    }                                                                        \
+  while (0)
 
 /* The kind of blanks for '-b' to skip in various options. */
 enum blanktype { bl_start, bl_end, bl_both };
@@ -345,13 +378,11 @@ static bool reverse;
    they were read if all keys compare equal.  */
 static bool stable;
 
-/* If TAB has this value, blanks separate fields.  */
-enum { TAB_DEFAULT = CHAR_MAX + 1 };
-
-/* Tab character separating fields.  If TAB_DEFAULT, then fields are
+/* Tab character separating fields.  If tab_length is 0, then fields are
    separated by the empty string between a non-blank character and a blank
    character. */
-static int tab = TAB_DEFAULT;
+static char tab[MB_LEN_MAX + 1];
+static size_t tab_length = 0;
 
 /* Flag to remove consecutive duplicate lines from the output.
    Only the last of a sequence of equal lines will be output. */
@@ -810,6 +841,46 @@ reap_all (void)
     reap (-1);
 }
 
+/* Function pointers. */
+static void
+(*inittables) (void);
+static char *
+(*begfield) (const struct line*, const struct keyfield *);
+static char *
+(*limfield) (const struct line*, const struct keyfield *);
+static void
+(*skipblanks) (char **ptr, char *lim);
+static int
+(*getmonth) (char const *, size_t, char **);
+static int
+(*keycompare) (const struct line *, const struct line *);
+static int
+(*numcompare) (const char *, const char *);
+
+/* Test for white space multibyte character.
+   Set LENGTH the byte length of investigated multibyte character. */
+#if HAVE_MBRTOWC
+static int
+ismbblank (const char *str, size_t len, size_t *length)
+{
+  size_t mblength;
+  wchar_t wc;
+  mbstate_t state;
+
+  memset (&state, '\0', sizeof(mbstate_t));
+  mblength = mbrtowc (&wc, str, len, &state);
+
+  if (mblength == (size_t)-1 || mblength == (size_t)-2)
+    {
+      *length = 1;
+      return 0;
+    }
+
+  *length = (mblength < 1) ? 1 : mblength;
+  return iswblank (wc);
+}
+#endif
+
 /* Clean up any remaining temporary files.  */
 
 static void
@@ -1254,7 +1325,7 @@ zaptemp (char const *name)
   free (node);
 }
 
-#if HAVE_NL_LANGINFO
+#if HAVE_LANGINFO_CODESET
 
 static int
 struct_month_cmp (void const *m1, void const *m2)
@@ -1269,7 +1340,7 @@ struct_month_cmp (void const *m1, void const *m2)
 /* Initialize the character class tables. */
 
 static void
-inittables (void)
+inittables_uni (void)
 {
   size_t i;
 
@@ -1281,7 +1352,7 @@ inittables (void)
       fold_toupper[i] = toupper (i);
     }
 
-#if HAVE_NL_LANGINFO
+#if HAVE_LANGINFO_CODESET
   /* If we're not in the "C" locale, read different names for months.  */
   if (hard_LC_TIME)
     {
@@ -1362,6 +1433,84 @@ specify_nmerge (int oi, char c, char const *s)
   else
     xstrtol_fatal (e, oi, c, long_options, s);
 }
+
+#if HAVE_MBRTOWC
+static void
+inittables_mb (void)
+{
+  int i, j, k, l;
+  char *name, *s, *lc_time, *lc_ctype;
+  size_t s_len, mblength;
+  char mbc[MB_LEN_MAX];
+  wchar_t wc, pwc;
+  mbstate_t state_mb, state_wc;
+
+  lc_time = setlocale (LC_TIME, "");
+  if (lc_time)
+    lc_time = xstrdup (lc_time);
+
+  lc_ctype = setlocale (LC_CTYPE, "");
+  if (lc_ctype)
+    lc_ctype = xstrdup (lc_ctype);
+
+  if (lc_time && lc_ctype)
+    /* temporarily set LC_CTYPE to match LC_TIME, so that we can convert
+     * the names of months to upper case */
+    setlocale (LC_CTYPE, lc_time);
+
+  for (i = 0; i < MONTHS_PER_YEAR; i++)
+    {
+      s = (char *) nl_langinfo (ABMON_1 + i);
+      s_len = strlen (s);
+      monthtab[i].name = name = (char *) xmalloc (s_len + 1);
+      monthtab[i].val = i + 1;
+
+      memset (&state_mb, '\0', sizeof (mbstate_t));
+      memset (&state_wc, '\0', sizeof (mbstate_t));
+
+      for (j = 0; j < s_len;)
+        {
+          if (!ismbblank (s + j, s_len - j, &mblength))
+            break;
+          j += mblength;
+        }
+
+      for (k = 0; j < s_len;)
+        {
+          mblength = mbrtowc (&wc, (s + j), (s_len - j), &state_mb);
+          assert (mblength != (size_t)-1 && mblength != (size_t)-2);
+          if (mblength == 0)
+            break;
+
+          pwc = towupper (wc);
+          if (pwc == wc)
+            {
+              memcpy (mbc, s + j, mblength);
+              j += mblength;
+            }
+          else
+            {
+              j += mblength;
+              mblength = wcrtomb (mbc, pwc, &state_wc);
+              assert (mblength != (size_t)0 && mblength != (size_t)-1);
+            }
+
+          for (l = 0; l < mblength; l++)
+            name[k++] = mbc[l];
+        }
+      name[k] = '\0';
+    }
+  qsort ((void *) monthtab, MONTHS_PER_YEAR,
+      sizeof (struct month), struct_month_cmp);
+
+  if (lc_time && lc_ctype)
+    /* restore the original locales */
+    setlocale (LC_CTYPE, lc_ctype);
+
+  free (lc_ctype);
+  free (lc_time);
+}
+#endif
 
 /* Specify the amount of main memory to use when sorting.  */
 static void
@@ -1596,7 +1745,7 @@ buffer_linelim (struct buffer const *buf)
    by KEY in LINE. */
 
 static char *
-begfield (struct line const *line, struct keyfield const *key)
+begfield_uni (const struct line *line, const struct keyfield *key)
 {
   char *ptr = line->text, *lim = ptr + line->length - 1;
   size_t sword = key->sword;
@@ -1605,10 +1754,10 @@ begfield (struct line const *line, struct keyfield const *key)
   /* The leading field separator itself is included in a field when -t
      is absent.  */
 
-  if (tab != TAB_DEFAULT)
+  if (tab_length)
     while (ptr < lim && sword--)
       {
-        while (ptr < lim && *ptr != tab)
+        while (ptr < lim && *ptr != tab[0])
           ++ptr;
         if (ptr < lim)
           ++ptr;
@@ -1634,11 +1783,70 @@ begfield (struct line const *line, struct keyfield const *key)
   return ptr;
 }
 
+#if HAVE_MBRTOWC
+static char *
+begfield_mb (const struct line *line, const struct keyfield *key)
+{
+  int i;
+  char *ptr = line->text, *lim = ptr + line->length - 1;
+  size_t sword = key->sword;
+  size_t schar = key->schar;
+  size_t mblength;
+  mbstate_t state;
+
+  memset (&state, '\0', sizeof(mbstate_t));
+
+  if (tab_length)
+    while (ptr < lim && sword--)
+      {
+        while (ptr < lim && memcmp (ptr, tab, tab_length) != 0)
+          {
+            GET_BYTELEN_OF_CHAR (lim, ptr, mblength, state);
+            ptr += mblength;
+          }
+        if (ptr < lim)
+          {
+            GET_BYTELEN_OF_CHAR (lim, ptr, mblength, state);
+            ptr += mblength;
+          }
+      }
+  else
+    while (ptr < lim && sword--)
+      {
+        while (ptr < lim && ismbblank (ptr, lim - ptr, &mblength))
+          ptr += mblength;
+        if (ptr < lim)
+          {
+            GET_BYTELEN_OF_CHAR (lim, ptr, mblength, state);
+            ptr += mblength;
+          }
+        while (ptr < lim && !ismbblank (ptr, lim - ptr, &mblength))
+          ptr += mblength;
+      }
+
+  if (key->skipsblanks)
+    while (ptr < lim && ismbblank (ptr, lim - ptr, &mblength))
+      ptr += mblength;
+
+  for (i = 0; i < schar; i++)
+    {
+      GET_BYTELEN_OF_CHAR (lim, ptr, mblength, state);
+
+      if (ptr + mblength > lim)
+        break;
+      else
+        ptr += mblength;
+    }
+
+  return ptr;
+}
+#endif
+
 /* Return the limit of (a pointer to the first character after) the field
    in LINE specified by KEY. */
 
 static char *
-limfield (struct line const *line, struct keyfield const *key)
+limfield_uni (const struct line *line, const struct keyfield *key)
 {
   char *ptr = line->text, *lim = ptr + line->length - 1;
   size_t eword = key->eword, echar = key->echar;
@@ -1653,10 +1861,10 @@ limfield (struct line const *line, struct keyfield const *key)
      'beginning' is the first character following the delimiting TAB.
      Otherwise, leave PTR pointing at the first 'blank' character after
      the preceding field.  */
-  if (tab != TAB_DEFAULT)
+  if (tab_length)
     while (ptr < lim && eword--)
       {
-        while (ptr < lim && *ptr != tab)
+        while (ptr < lim && *ptr != tab[0])
           ++ptr;
         if (ptr < lim && (eword || echar))
           ++ptr;
@@ -1702,10 +1910,10 @@ limfield (struct line const *line, struct keyfield const *key)
      */
 
   /* Make LIM point to the end of (one byte past) the current field.  */
-  if (tab != TAB_DEFAULT)
+  if (tab_length)
     {
       char *newlim;
-      newlim = memchr (ptr, tab, lim - ptr);
+      newlim = memchr (ptr, tab[0], lim - ptr);
       if (newlim)
         lim = newlim;
     }
@@ -1735,6 +1943,130 @@ limfield (struct line const *line, struct keyfield const *key)
 
   return ptr;
 }
+
+#if HAVE_MBRTOWC
+static char *
+limfield_mb (const struct line *line, const struct keyfield *key)
+{
+  char *ptr = line->text, *lim = ptr + line->length - 1;
+  size_t eword = key->eword, echar = key->echar;
+  int i;
+  size_t mblength;
+  mbstate_t state;
+
+  if (echar == 0)
+    eword++; /* skip all of end field. */
+
+  memset (&state, '\0', sizeof(mbstate_t));
+
+  if (tab_length)
+    while (ptr < lim && eword--)
+      {
+        while (ptr < lim && memcmp (ptr, tab, tab_length) != 0)
+          {
+            GET_BYTELEN_OF_CHAR (lim, ptr, mblength, state);
+            ptr += mblength;
+          }
+        if (ptr < lim && (eword | echar))
+          {
+            GET_BYTELEN_OF_CHAR (lim, ptr, mblength, state);
+            ptr += mblength;
+          }
+      }
+  else
+    while (ptr < lim && eword--)
+      {
+        while (ptr < lim && ismbblank (ptr, lim - ptr, &mblength))
+          ptr += mblength;
+        if (ptr < lim)
+          {
+            GET_BYTELEN_OF_CHAR (lim, ptr, mblength, state);
+            ptr += mblength;
+          }
+        while (ptr < lim && !ismbblank (ptr, lim - ptr, &mblength))
+          ptr += mblength;
+      }
+
+
+# ifdef POSIX_UNSPECIFIED
+  /* Make LIM point to the end of (one byte past) the current field.  */
+  if (tab_length)
+    {
+      char *newlim, *p;
+
+      newlim = NULL;
+      for (p = ptr; p < lim;)
+         {
+          if (memcmp (p, tab, tab_length) == 0)
+            {
+              newlim = p;
+              break;
+            }
+
+          GET_BYTELEN_OF_CHAR (lim, ptr, mblength, state);
+          p += mblength;
+        }
+    }
+  else
+    {
+      char *newlim;
+      newlim = ptr;
+
+      while (newlim < lim && ismbblank (newlim, lim - newlim, &mblength))
+        newlim += mblength;
+      if (ptr < lim)
+        {
+          GET_BYTELEN_OF_CHAR (lim, ptr, mblength, state);
+          ptr += mblength;
+        }
+      while (newlim < lim && !ismbblank (newlim, lim - newlim, &mblength))
+        newlim += mblength;
+      lim = newlim;
+    }
+# endif
+
+  if (echar != 0)
+  {
+    /* If we're skipping leading blanks, don't start counting characters
+     *      until after skipping past any leading blanks.  */
+    if (key->skipeblanks)
+      while (ptr < lim && ismbblank (ptr, lim - ptr, &mblength))
+        ptr += mblength;
+
+    memset (&state, '\0', sizeof(mbstate_t));
+
+    /* Advance PTR by ECHAR (if possible), but no further than LIM.  */
+    for (i = 0; i < echar; i++)
+     {
+        GET_BYTELEN_OF_CHAR (lim, ptr, mblength, state);
+
+        if (ptr + mblength > lim)
+          break;
+        else
+          ptr += mblength;
+      }
+  }
+
+  return ptr;
+}
+#endif
+
+static void
+skipblanks_uni (char **ptr, char *lim)
+{
+  while (*ptr < lim && blanks[to_uchar (**ptr)])
+    ++(*ptr);
+}
+
+#if HAVE_MBRTOWC
+static void
+skipblanks_mb (char **ptr, char *lim)
+{
+  size_t mblength;
+  while (*ptr < lim && ismbblank (*ptr, lim - *ptr, &mblength))
+    (*ptr) += mblength;
+}
+#endif
 
 /* Fill BUF reading from FP, moving buf->left bytes from the end
    of buf->buf to the beginning first.  If EOF is reached and the
@@ -1822,8 +2154,22 @@ fillbuf (struct buffer *buf, FILE *fp, char const *file)
                   else
                     {
                       if (key->skipsblanks)
-                        while (blanks[to_uchar (*line_start)])
-                          line_start++;
+                        {
+#if HAVE_MBRTOWC
+                          if (MB_CUR_MAX > 1)
+                            {
+                              size_t mblength;
+                              while (line_start < line->keylim &&
+                                     ismbblank (line_start,
+                                                line->keylim - line_start,
+                                                &mblength))
+                                line_start += mblength;
+                            }
+                          else
+#endif
+                          while (blanks[to_uchar (*line_start)])
+                            line_start++;
+                        }
                       line->keybeg = line_start;
                     }
                 }
@@ -1944,7 +2290,7 @@ human_numcompare (char const *a, char const *b)
    hideously fast. */
 
 static int
-numcompare (char const *a, char const *b)
+numcompare_uni (const char *a, const char *b)
 {
   while (blanks[to_uchar (*a)])
     a++;
@@ -1953,6 +2299,25 @@ numcompare (char const *a, char const *b)
 
   return strnumcmp (a, b, decimal_point, thousands_sep);
 }
+
+#if HAVE_MBRTOWC
+static int
+numcompare_mb (const char *a, const char *b)
+{
+  size_t mblength, len;
+  len = strlen (a); /* okay for UTF-8 */
+  while (*a && ismbblank (a, len > MB_CUR_MAX ? MB_CUR_MAX : len, &mblength))
+    {
+      a += mblength;
+      len -= mblength;
+    }
+  len = strlen (b); /* okay for UTF-8 */
+  while (*b && ismbblank (b, len > MB_CUR_MAX ? MB_CUR_MAX : len, &mblength))
+    b += mblength;
+
+  return strnumcmp (a, b, decimal_point, thousands_sep);
+}
+#endif /* HAV_EMBRTOWC */
 
 /* Work around a problem whereby the long double value returned by glibc's
    strtold ("NaN", ...) contains uninitialized bits: clear all bytes of
@@ -2004,7 +2369,7 @@ general_numcompare (char const *sa, char const *sb)
    Return 0 if the name in S is not recognized.  */
 
 static int
-getmonth (char const *month, char **ea)
+getmonth_uni (char const *month, size_t len, char **ea)
 {
   size_t lo = 0;
   size_t hi = MONTHS_PER_YEAR;
@@ -2279,15 +2644,14 @@ debug_key (struct line const *line, struct keyfield const *key)
           char saved = *lim;
           *lim = '\0';
 
-          while (blanks[to_uchar (*beg)])
-            beg++;
+          skipblanks (&beg, lim);
 
           char *tighter_lim = beg;
 
           if (lim < beg)
             tighter_lim = lim;
           else if (key->month)
-            getmonth (beg, &tighter_lim);
+            getmonth (beg, lim-beg, &tighter_lim);
           else if (key->general_numeric)
             ignore_value (strtold (beg, &tighter_lim));
           else if (key->numeric || key->human_numeric)
@@ -2431,7 +2795,7 @@ key_warnings (struct keyfield const *gkey, bool gkey_only)
       bool maybe_space_aligned = !hard_LC_COLLATE && default_key_compare (key)
                                  && !(key->schar || key->echar);
       bool line_offset = key->eword == 0 && key->echar != 0; /* -k1.x,1.y  */
-      if (!gkey_only && tab == TAB_DEFAULT && !line_offset
+      if (!gkey_only && !tab_length && !line_offset
           && ((!key->skipsblanks && !(implicit_skip || maybe_space_aligned))
               || (!key->skipsblanks && key->schar)
               || (!key->skipeblanks && key->echar)))
@@ -2489,11 +2853,87 @@ key_warnings (struct keyfield const *gkey, bool gkey_only)
     error (0, 0, _("option '-r' only applies to last-resort comparison"));
 }
 
+#if HAVE_MBRTOWC
+static int
+getmonth_mb (const char *s, size_t len, char **ea)
+{
+  char *month;
+  register size_t i;
+  register int lo = 0, hi = MONTHS_PER_YEAR, result;
+  char *tmp;
+  size_t wclength, mblength;
+  const char **pp;
+  const wchar_t **wpp;
+  wchar_t *month_wcs;
+  mbstate_t state;
+
+  while (len > 0 && ismbblank (s, len, &mblength))
+    {
+      s += mblength;
+      len -= mblength;
+    }
+
+  if (len == 0)
+    return 0;
+
+  month = (char *) xmalloc (len + 1);
+
+  tmp = (char *) xmalloc (len + 1);
+  memcpy (tmp, s, len);
+  tmp[len] = '\0';
+  pp = (const char **)&tmp;
+  month_wcs = (wchar_t *) xmalloc ((len + 1) * sizeof (wchar_t));
+  memset (&state, '\0', sizeof(mbstate_t));
+
+  wclength = mbsrtowcs (month_wcs, pp, len + 1, &state);
+  if (wclength == (size_t)-1 || *pp != NULL)
+    error (SORT_FAILURE, 0, _("Invalid multibyte input %s."), quote(s));
+
+  for (i = 0; i < wclength; i++)
+    {
+      month_wcs[i] = towupper(month_wcs[i]);
+      if (iswblank (month_wcs[i]))
+        {
+          month_wcs[i] = L'\0';
+          break;
+        }
+    }
+
+  wpp = (const wchar_t **)&month_wcs;
+
+  mblength = wcsrtombs (month, wpp, len + 1, &state);
+  assert (mblength != (-1) && *wpp == NULL);
+
+  do
+    {
+      int ix = (lo + hi) / 2;
+
+      if (strncmp (month, monthtab[ix].name, strlen (monthtab[ix].name)) < 0)
+        hi = ix;
+      else
+        lo = ix;
+    }
+  while (hi - lo > 1);
+
+  result = (!strncmp (month, monthtab[lo].name, strlen (monthtab[lo].name))
+      ? monthtab[lo].val : 0);
+
+  if (ea && result)
+     *ea = (char*) s + strlen (monthtab[lo].name);
+
+  free (month);
+  free (tmp);
+  free (month_wcs);
+
+  return result;
+}
+#endif
+
 /* Compare two lines A and B trying every key in sequence until there
    are no more keys or a difference is found. */
 
 static int
-keycompare (struct line const *a, struct line const *b)
+keycompare_uni (const struct line *a, const struct line *b)
 {
   struct keyfield *key = keylist;
 
@@ -2578,7 +3018,7 @@ keycompare (struct line const *a, struct line const *b)
           else if (key->human_numeric)
             diff = human_numcompare (ta, tb);
           else if (key->month)
-            diff = getmonth (ta, NULL) - getmonth (tb, NULL);
+            diff = getmonth (ta, tlena, NULL) - getmonth (tb, tlenb, NULL);
           else if (key->random)
             diff = compare_random (ta, tlena, tb, tlenb);
           else if (key->version)
@@ -2694,6 +3134,209 @@ keycompare (struct line const *a, struct line const *b)
   return key->reverse ? -diff : diff;
 }
 
+#if HAVE_MBRTOWC
+static int
+keycompare_mb (const struct line *a, const struct line *b)
+{
+  struct keyfield *key = keylist;
+
+  /* For the first iteration only, the key positions have been
+     precomputed for us. */
+  char *texta = a->keybeg;
+  char *textb = b->keybeg;
+  char *lima = a->keylim;
+  char *limb = b->keylim;
+
+  size_t mblength_a, mblength_b;
+  wchar_t wc_a, wc_b;
+  mbstate_t state_a, state_b;
+
+  int diff = 0;
+
+  memset (&state_a, '\0', sizeof(mbstate_t));
+  memset (&state_b, '\0', sizeof(mbstate_t));
+  /* Ignore keys with start after end.  */
+  if (a->keybeg - a->keylim > 0)
+    return 0;
+
+
+              /* Ignore and/or translate chars before comparing.  */
+# define IGNORE_CHARS(NEW_LEN, LEN, TEXT, COPY, WC, MBLENGTH, STATE)        \
+  do                                                                        \
+    {                                                                        \
+      wchar_t uwc;                                                        \
+      char mbc[MB_LEN_MAX];                                                \
+      mbstate_t state_wc;                                                \
+                                                                        \
+      for (NEW_LEN = i = 0; i < LEN;)                                        \
+        {                                                                \
+          mbstate_t state_bak;                                                \
+                                                                        \
+          state_bak = STATE;                                                \
+          MBLENGTH = mbrtowc (&WC, TEXT + i, LEN - i, &STATE);                \
+                                                                        \
+          if (MBLENGTH == (size_t)-2 || MBLENGTH == (size_t)-1                \
+              || MBLENGTH == 0)                                                \
+            {                                                                \
+              if (MBLENGTH == (size_t)-2 || MBLENGTH == (size_t)-1)        \
+                STATE = state_bak;                                        \
+              if (!ignore)                                                \
+                COPY[NEW_LEN++] = TEXT[i];                                \
+              i++;                                                         \
+              continue;                                                        \
+            }                                                                \
+                                                                        \
+          if (ignore)                                                        \
+            {                                                                \
+              if ((ignore == nonprinting && !iswprint (WC))                \
+                   || (ignore == nondictionary                                \
+                       && !iswalnum (WC) && !iswblank (WC)))                \
+                {                                                        \
+                  i += MBLENGTH;                                        \
+                  continue;                                                \
+                }                                                        \
+            }                                                                \
+                                                                        \
+          if (translate)                                                \
+            {                                                                \
+                                                                        \
+              uwc = towupper(WC);                                        \
+              if (WC == uwc)                                                \
+                {                                                        \
+                  memcpy (mbc, TEXT + i, MBLENGTH);                        \
+                  i += MBLENGTH;                                        \
+                }                                                        \
+              else                                                        \
+                {                                                        \
+                  i += MBLENGTH;                                        \
+                  WC = uwc;                                                \
+                  memset (&state_wc, '\0', sizeof (mbstate_t));                \
+                                                                        \
+                  MBLENGTH = wcrtomb (mbc, WC, &state_wc);                \
+                  assert (MBLENGTH != (size_t)-1 && MBLENGTH != 0);        \
+                }                                                        \
+                                                                        \
+              for (j = 0; j < MBLENGTH; j++)                                \
+                COPY[NEW_LEN++] = mbc[j];                                \
+            }                                                                \
+          else                                                                \
+            for (j = 0; j < MBLENGTH; j++)                                \
+              COPY[NEW_LEN++] = TEXT[i++];                                \
+        }                                                                \
+      COPY[NEW_LEN] = '\0';                                                \
+    }                                                                        \
+  while (0)
+
+      /* Actually compare the fields. */
+
+  for (;;)
+    {
+      /* Find the lengths. */
+      size_t lena = lima <= texta ? 0 : lima - texta;
+      size_t lenb = limb <= textb ? 0 : limb - textb;
+
+      char enda IF_LINT (= 0);
+      char endb IF_LINT (= 0);
+
+      char const *translate = key->translate;
+      bool const *ignore = key->ignore;
+
+      if (ignore || translate)
+        {
+          char *copy_a = (char *) xmalloc (lena + 1 + lenb + 1);
+          char *copy_b = copy_a + lena + 1;
+          size_t new_len_a, new_len_b;
+          size_t i, j;
+
+          IGNORE_CHARS (new_len_a, lena, texta, copy_a,
+                        wc_a, mblength_a, state_a);
+          IGNORE_CHARS (new_len_b, lenb, textb, copy_b,
+                        wc_b, mblength_b, state_b);
+          texta = copy_a; textb = copy_b;
+          lena = new_len_a; lenb = new_len_b;
+        }
+      else
+        {
+          /* Use the keys in-place, temporarily null-terminated.  */
+          enda = texta[lena]; texta[lena] = '\0';
+          endb = textb[lenb]; textb[lenb] = '\0';
+        }
+
+      if (key->random)
+        diff = compare_random (texta, lena, textb, lenb);
+      else if (key->numeric | key->general_numeric | key->human_numeric)
+        {
+          char savea = *lima, saveb = *limb;
+
+          *lima = *limb = '\0';
+          diff = (key->numeric ? numcompare (texta, textb)
+                  : key->general_numeric ? general_numcompare (texta, textb)
+                  : human_numcompare (texta, textb));
+          *lima = savea, *limb = saveb;
+        }
+      else if (key->version)
+        diff = filevercmp (texta, textb);
+      else if (key->month)
+        diff = getmonth (texta, lena, NULL) - getmonth (textb, lenb, NULL);
+      else if (lena == 0)
+        diff = - NONZERO (lenb);
+      else if (lenb == 0)
+        diff = 1;
+      else if (hard_LC_COLLATE && !folding)
+        {
+          diff = xmemcoll0 (texta, lena + 1, textb, lenb + 1);
+        }
+      else
+        {
+          diff = memcmp (texta, textb, MIN (lena, lenb));
+          if (diff == 0)
+            diff = lena < lenb ? -1 : lena != lenb;
+        }
+
+      if (ignore || translate)
+        free (texta);
+      else
+        {
+          texta[lena] = enda;
+          textb[lenb] = endb;
+        }
+
+      if (diff)
+        goto not_equal;
+
+      key = key->next;
+      if (! key)
+        break;
+
+      /* Find the beginning and limit of the next field.  */
+      if (key->eword != -1)
+        lima = limfield (a, key), limb = limfield (b, key);
+      else
+        lima = a->text + a->length - 1, limb = b->text + b->length - 1;
+
+      if (key->sword != -1)
+        texta = begfield (a, key), textb = begfield (b, key);
+      else
+        {
+          texta = a->text, textb = b->text;
+          if (key->skipsblanks)
+            {
+              while (texta < lima && ismbblank (texta, lima - texta, &mblength_a))
+                texta += mblength_a;
+              while (textb < limb && ismbblank (textb, limb - textb, &mblength_b))
+                textb += mblength_b;
+            }
+        }
+    }
+
+not_equal:
+  if (key && key->reverse)
+    return -diff;
+  else
+    return diff;
+}
+#endif
+
 /* Compare two lines A and B, returning negative, zero, or positive
    depending on whether A compares less than, equal to, or greater than B. */
 
@@ -2721,7 +3364,7 @@ compare (struct line const *a, struct line const *b)
     diff = - NONZERO (blen);
   else if (blen == 0)
     diff = 1;
-  else if (hard_LC_COLLATE)
+  else if (hard_LC_COLLATE && !folding)
     {
       /* Note xmemcoll0 is a performance enhancement as
          it will not unconditionally write '\0' after the
@@ -4120,6 +4763,7 @@ set_ordering (char const *s, struct keyfield *key, enum blanktype blanktype)
           break;
         case 'f':
           key->translate = fold_toupper;
+          folding = true;
           break;
         case 'g':
           key->general_numeric = true;
@@ -4197,7 +4841,7 @@ main (int argc, char **argv)
   initialize_exit_failure (SORT_FAILURE);
 
   hard_LC_COLLATE = hard_locale (LC_COLLATE);
-#if HAVE_NL_LANGINFO
+#if HAVE_LANGINFO_CODESET
   hard_LC_TIME = hard_locale (LC_TIME);
 #endif
 
@@ -4217,6 +4861,29 @@ main (int argc, char **argv)
     if (! thousands_sep || locale->thousands_sep[1])
       thousands_sep = -1;
   }
+
+#if HAVE_MBRTOWC
+  if (MB_CUR_MAX > 1)
+    {
+      inittables = inittables_mb;
+      begfield = begfield_mb;
+      limfield = limfield_mb;
+      skipblanks = skipblanks_mb;
+      getmonth = getmonth_mb;
+      keycompare = keycompare_mb;
+      numcompare = numcompare_mb;
+    }
+  else
+#endif
+    {
+      inittables = inittables_uni;
+      begfield = begfield_uni;
+      limfield = limfield_uni;
+      skipblanks = skipblanks_uni;
+      getmonth = getmonth_uni;
+      keycompare = keycompare_uni;
+      numcompare = numcompare_uni;
+    }
 
   have_read_stdin = false;
   inittables ();
@@ -4492,13 +5159,34 @@ main (int argc, char **argv)
 
         case 't':
           {
-            char newtab = optarg[0];
-            if (! newtab)
+            char newtab[MB_LEN_MAX + 1];
+            size_t newtab_length = 1;
+            strncpy (newtab, optarg, MB_LEN_MAX);
+            if (! newtab[0])
               error (SORT_FAILURE, 0, _("empty tab"));
-            if (optarg[1])
+#if HAVE_MBRTOWC
+            if (MB_CUR_MAX > 1)
+              {
+                wchar_t wc;
+                mbstate_t state;
+
+                memset (&state, '\0', sizeof (mbstate_t));
+                newtab_length = mbrtowc (&wc, newtab, strnlen (newtab,
+                                                               MB_LEN_MAX),
+                                         &state);
+                switch (newtab_length)
+                  {
+                  case (size_t) -1:
+                  case (size_t) -2:
+                  case 0:
+                    newtab_length = 1;
+                  }
+              }
+#endif
+            if (newtab_length == 1 && optarg[1])
               {
                 if (STREQ (optarg, "\\0"))
-                  newtab = '\0';
+                  newtab[0] = '\0';
                 else
                   {
                     /* Provoke with 'sort -txx'.  Complain about
@@ -4509,9 +5197,12 @@ main (int argc, char **argv)
                            quote (optarg));
                   }
               }
-            if (tab != TAB_DEFAULT && tab != newtab)
+            if (tab_length
+                && (tab_length != newtab_length
+                    || memcmp (tab, newtab, tab_length) != 0))
               error (SORT_FAILURE, 0, _("incompatible tabs"));
-            tab = newtab;
+            memcpy (tab, newtab, newtab_length);
+            tab_length = newtab_length;
           }
           break;
 

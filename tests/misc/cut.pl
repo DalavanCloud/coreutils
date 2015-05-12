@@ -23,9 +23,11 @@ use strict;
 # Turn off localization of executable's output.
 @ENV{qw(LANGUAGE LANG LC_ALL)} = ('C') x 3;
 
-my $mb_locale = $ENV{LOCALE_FR_UTF8};
+my $mb_locale;
+# uncommented enable multibyte paths
+$mb_locale = $ENV{LOCALE_FR_UTF8};
 ! defined $mb_locale || $mb_locale eq 'none'
-  and $mb_locale = 'C';
+ and $mb_locale = 'C';
 
 my $prog = 'cut';
 my $try = "Try '$prog --help' for more information.\n";
@@ -227,6 +229,7 @@ if ($mb_locale ne 'C')
         my @new_t = @$t;
         my $test_name = shift @new_t;
 
+        next if ($test_name =~ "newline-[12][0-9]");
         push @new, ["$test_name-mb", @new_t, {ENV => "LC_ALL=$mb_locale"}];
       }
     push @Tests, @new;

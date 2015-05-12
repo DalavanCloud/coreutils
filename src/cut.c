@@ -28,6 +28,11 @@
 #include <assert.h>
 #include <getopt.h>
 #include <sys/types.h>
+
+/* Get mbstate_t, mbrtowc().  */
+#if HAVE_WCHAR_H
+# include <wchar.h>
+#endif
 #include "system.h"
 
 #include "error.h"
@@ -36,6 +41,18 @@
 #include "hash.h"
 #include "quote.h"
 #include "xstrndup.h"
+
+/* MB_LEN_MAX is incorrectly defined to be 1 in at least one GCC
+   installation; work around this configuration error.        */
+#if !defined MB_LEN_MAX || MB_LEN_MAX < 2
+# undef MB_LEN_MAX
+# define MB_LEN_MAX 16
+#endif
+
+/* Some systems, like BeOS, have multibyte encodings but lack mbstate_t.  */
+#if HAVE_MBRTOWC && defined mbstate_t
+# define mbrtowc(pwc, s, n, ps) (mbrtowc) (pwc, s, n, 0)
+#endif
 
 /* The official name of this program (e.g., no 'g' prefix).  */
 #define PROGRAM_NAME "cut"
@@ -51,6 +68,52 @@
       error (0, 0, (Message));						\
       usage (EXIT_FAILURE);						\
     }									\
+  while (0)
+
+/* Refill the buffer BUF to get a multibyte character. */
+#define REFILL_BUFFER(BUF, BUFPOS, BUFLEN, STREAM)                        \
+  do                                                                        \
+    {                                                                        \
+      if (BUFLEN < MB_LEN_MAX && !feof (STREAM) && !ferror (STREAM))        \
+        {                                                                \
+          memmove (BUF, BUFPOS, BUFLEN);                                \
+          BUFLEN += fread (BUF + BUFLEN, sizeof(char), BUFSIZ, STREAM); \
+          BUFPOS = BUF;                                                        \
+        }                                                                \
+    }                                                                        \
+  while (0)
+
+/* Get wide character on BUFPOS. BUFPOS is not included after that.
+   If byte sequence is not valid as a character, CONVFAIL is true. Otherwise false. */
+#define GET_NEXT_WC_FROM_BUFFER(WC, BUFPOS, BUFLEN, MBLENGTH, STATE, CONVFAIL) \
+  do                                                                        \
+    {                                                                        \
+      mbstate_t state_bak;                                                \
+                                                                        \
+      if (BUFLEN < 1)                                                        \
+        {                                                                \
+          WC = WEOF;                                                        \
+          break;                                                        \
+        }                                                                \
+                                                                        \
+      /* Get a wide character. */                                        \
+      CONVFAIL = false;                                                        \
+      state_bak = STATE;                                                \
+      MBLENGTH = mbrtowc ((wchar_t *)&WC, BUFPOS, BUFLEN, &STATE);        \
+                                                                        \
+      switch (MBLENGTH)                                                        \
+        {                                                                \
+        case (size_t)-1:                                                \
+        case (size_t)-2:                                                \
+          CONVFAIL = true;                                                        \
+          STATE = state_bak;                                                \
+          /* Fall througn. */                                                \
+                                                                        \
+        case 0:                                                                \
+          MBLENGTH = 1;                                                        \
+          break;                                                        \
+        }                                                                \
+    }                                                                        \
   while (0)
 
 
@@ -75,6 +138,8 @@ static size_t n_rp;
 /* Number of `struct range_pair's allocated. */
 static size_t n_rp_allocated;
 
+/* Length of the delimiter given as argument to -d.  */
+size_t delimlen;
 
 /* Append LOW, HIGH to the list RP of range pairs, allocating additional
    space if necessary.  Update global variable N_RP.  When allocating,
@@ -106,14 +171,24 @@ enum operating_mode
   {
     undefined_mode,
 
-    /* Output characters that are in the given bytes. */
+    /* Output bytes that are at the given positions. */
     byte_mode,
+
+    /* Output characters that are at the given positions. */
+    character_mode,
 
     /* Output the given delimiter-separated fields. */
     field_mode
   };
 
 static enum operating_mode operating_mode;
+
+/* If nonzero, when in byte mode, don't split multibyte characters.  */
+static int byte_mode_character_aware;
+
+/* If nonzero, the function for single byte locale is work
+   if this program runs on multibyte locale. */
+static int force_singlebyte_mode;
 
 /* If true do not output lines containing no delimiter characters.
    Otherwise, all such lines are printed.  This option is valid only
@@ -126,6 +201,9 @@ static bool complement;
 
 /* The delimiter character for field mode. */
 static unsigned char delim;
+#if HAVE_WCHAR_H
+static wchar_t wcdelim;
+#endif
 
 /* True if the --output-delimiter=STRING option was specified.  */
 static bool output_delimiter_specified;
@@ -189,7 +267,7 @@ Print selected parts of lines from each FILE to standard output.\n\
   -f, --fields=LIST       select only these fields;  also print any line\n\
                             that contains no delimiter character, unless\n\
                             the -s option is specified\n\
-  -n                      (ignored)\n\
+  -n                      with -b: don't split multibyte characters\n\
 "), stdout);
       fputs (_("\
       --complement        complement the set of selected bytes, characters\n\
@@ -380,6 +458,9 @@ set_fields (const char *fieldstr)
               if (operating_mode == byte_mode)
                 error (0, 0,
                        _("byte offset %s is too large"), quote (bad_num));
+              else if (operating_mode == character_mode)
+                error (0, 0,
+                       _("character offset %s is too large"), quote (bad_num));
               else
                 error (0, 0,
                        _("field number %s is too large"), quote (bad_num));
@@ -503,6 +584,82 @@ cut_bytes (FILE *stream)
         }
     }
 }
+
+#if HAVE_MBRTOWC
+/* This function is in use for the following case.
+
+   1. Read from the stream STREAM, printing to standard output any selected
+   characters.
+
+   2. Read from stream STREAM, printing to standard output any selected bytes,
+   without splitting multibyte characters.  */
+
+static void
+cut_characters_or_cut_bytes_no_split (FILE *stream)
+{
+  size_t idx;                /* number of bytes or characters in the line so far. */
+  char buf[MB_LEN_MAX + BUFSIZ];  /* For spooling a read byte sequence. */
+  char *bufpos;                /* Next read position of BUF. */
+  size_t buflen;        /* The length of the byte sequence in buf. */
+  wint_t wc;                /* A gotten wide character. */
+  size_t mblength;        /* The byte size of a multibyte character which shows
+                           as same character as WC. */
+  mbstate_t state;        /* State of the stream. */
+  bool convfail = false;  /* true, when conversion failed. Otherwise false. */
+  /* Whether to begin printing delimiters between ranges for the current line.
+     Set after we've begun printing data corresponding to the first range.  */
+  bool print_delimiter = false;
+
+  idx = 0;
+  buflen = 0;
+  bufpos = buf;
+  memset (&state, '\0', sizeof(mbstate_t));
+
+  current_rp = rp;
+
+  while (1)
+    {
+      REFILL_BUFFER (buf, bufpos, buflen, stream);
+
+      GET_NEXT_WC_FROM_BUFFER (wc, bufpos, buflen, mblength, state, convfail);
+      (void) convfail;  /* ignore unused */
+
+      if (wc == WEOF)
+        {
+          if (idx > 0)
+            putchar ('\n');
+          break;
+        }
+      else if (wc == L'\n')
+        {
+          putchar ('\n');
+          idx = 0;
+          print_delimiter = false;
+          current_rp = rp;
+        }
+      else
+        {
+          next_item (&idx);
+          if (print_kth (idx))
+            {
+              if (output_delimiter_specified)
+                {
+                  if (print_delimiter && is_range_start_index (idx))
+                    {
+                      fwrite (output_delimiter_string, sizeof (char),
+                              output_delimiter_length, stdout);
+                    }
+                  print_delimiter = true;
+                }
+              fwrite (bufpos, mblength, sizeof(char), stdout);
+            }
+        }
+
+      buflen -= mblength;
+      bufpos += mblength;
+    }
+}
+#endif
 
 /* Read from stream STREAM, printing to standard output any selected fields.  */
 
@@ -648,13 +805,211 @@ cut_fields (FILE *stream)
     }
 }
 
+#if HAVE_MBRTOWC
+static void
+cut_fields_mb (FILE *stream)
+{
+  int c;
+  size_t field_idx;
+  int found_any_selected_field;
+  int buffer_first_field;
+  int empty_input;
+  char buf[MB_LEN_MAX + BUFSIZ];  /* For spooling a read byte sequence. */
+  char *bufpos;                /* Next read position of BUF. */
+  size_t buflen;        /* The length of the byte sequence in buf. */
+  wint_t wc = 0;        /* A gotten wide character. */
+  size_t mblength;        /* The byte size of a multibyte character which shows
+                           as same character as WC. */
+  mbstate_t state;        /* State of the stream. */
+  bool convfail = false;  /* true, when conversion failed. Otherwise false. */
+
+  current_rp = rp;
+
+  found_any_selected_field = 0;
+  field_idx = 1;
+  bufpos = buf;
+  buflen = 0;
+  memset (&state, '\0', sizeof(mbstate_t));
+
+  c = getc (stream);
+  empty_input = (c == EOF);
+  if (c != EOF)
+  {
+    ungetc (c, stream);
+    wc = 0;
+  }
+  else
+    wc = WEOF;
+
+  /* To support the semantics of the -s flag, we may have to buffer
+     all of the first field to determine whether it is `delimited.'
+     But that is unnecessary if all non-delimited lines must be printed
+     and the first field has been selected, or if non-delimited lines
+     must be suppressed and the first field has *not* been selected.
+     That is because a non-delimited line has exactly one field.  */
+  buffer_first_field = (suppress_non_delimited ^ !print_kth (1));
+
+  while (1)
+    {
+      if (field_idx == 1 && buffer_first_field)
+        {
+          int len = 0;
+
+          while (1)
+            {
+              REFILL_BUFFER (buf, bufpos, buflen, stream);
+
+              GET_NEXT_WC_FROM_BUFFER
+                (wc, bufpos, buflen, mblength, state, convfail);
+
+              if (wc == WEOF)
+                break;
+
+              field_1_buffer = xrealloc (field_1_buffer, len + mblength);
+              memcpy (field_1_buffer + len, bufpos, mblength);
+              len += mblength;
+              buflen -= mblength;
+              bufpos += mblength;
+
+              if (!convfail && (wc == L'\n' || wc == wcdelim))
+                break;
+            }
+
+          if (len <= 0 && wc == WEOF)
+            break;
+
+          /* If the first field extends to the end of line (it is not
+             delimited) and we are printing all non-delimited lines,
+             print this one.  */
+          if (convfail || (!convfail && wc != wcdelim))
+            {
+              if (suppress_non_delimited)
+                {
+                  /* Empty.        */
+                }
+              else
+                {
+                  fwrite (field_1_buffer, sizeof (char), len, stdout);
+                  /* Make sure the output line is newline terminated.  */
+                  if (convfail || (!convfail && wc != L'\n'))
+                    putchar ('\n');
+                }
+              continue;
+            }
+
+          if (print_kth (1))
+            {
+              /* Print the field, but not the trailing delimiter.  */
+              fwrite (field_1_buffer, sizeof (char), len - 1, stdout);
+              found_any_selected_field = 1;
+            }
+          next_item (&field_idx);
+        }
+
+      if (wc != WEOF)
+        {
+          if (print_kth (field_idx))
+            {
+              if (found_any_selected_field)
+                {
+                  fwrite (output_delimiter_string, sizeof (char),
+                          output_delimiter_length, stdout);
+                }
+              found_any_selected_field = 1;
+            }
+
+          while (1)
+            {
+              REFILL_BUFFER (buf, bufpos, buflen, stream);
+
+              GET_NEXT_WC_FROM_BUFFER
+                (wc, bufpos, buflen, mblength, state, convfail);
+
+              if (wc == WEOF)
+                break;
+              else if (!convfail && (wc == wcdelim || wc == L'\n'))
+                {
+                  buflen -= mblength;
+                  bufpos += mblength;
+                  break;
+                }
+
+              if (print_kth (field_idx))
+                fwrite (bufpos, mblength, sizeof(char), stdout);
+
+              buflen -= mblength;
+              bufpos += mblength;
+            }
+        }
+
+      if ((!convfail || wc == L'\n') && buflen < 1)
+        wc = WEOF;
+
+      if (!convfail && wc == wcdelim)
+        next_item (&field_idx);
+      else if (wc == WEOF || (!convfail && wc == L'\n'))
+        {
+          if (found_any_selected_field
+              || (!empty_input && !(suppress_non_delimited && field_idx == 1)))
+            putchar ('\n');
+          if (wc == WEOF)
+            break;
+          field_idx = 1;
+          current_rp = rp;
+          found_any_selected_field = 0;
+        }
+    }
+}
+#endif
+
 static void
 cut_stream (FILE *stream)
 {
-  if (operating_mode == byte_mode)
-    cut_bytes (stream);
+#if HAVE_MBRTOWC
+  if (MB_CUR_MAX > 1 && !force_singlebyte_mode)
+    {
+      switch (operating_mode)
+        {
+        case byte_mode:
+          if (byte_mode_character_aware)
+            cut_characters_or_cut_bytes_no_split (stream);
+          else
+            cut_bytes (stream);
+          break;
+
+        case character_mode:
+          cut_characters_or_cut_bytes_no_split (stream);
+          break;
+
+        case field_mode:
+          if (delimlen == 1)
+            {
+              /* Check if we have utf8 multibyte locale, so we can use this
+                 optimization because of uniqueness of characters, which is
+                 not true for e.g. SJIS */
+              char * loc = setlocale(LC_CTYPE, NULL);
+              if (loc && (strstr (loc, "UTF-8") || strstr (loc, "utf-8") ||
+                  strstr (loc, "UTF8") || strstr (loc, "utf8")))
+                {
+                  cut_fields (stream);
+                  break;
+                }
+            }
+          cut_fields_mb (stream);
+          break;
+
+        default:
+          abort ();
+        }
+    }
   else
-    cut_fields (stream);
+#endif
+    {
+      if (operating_mode == field_mode)
+        cut_fields (stream);
+      else
+        cut_bytes (stream);
+    }
 }
 
 /* Process file FILE to standard output.
@@ -706,6 +1061,7 @@ main (int argc, char **argv)
   bool ok;
   bool delim_specified = false;
   char *spec_list_string IF_LINT ( = NULL);
+  char mbdelim[MB_LEN_MAX + 1];
 
   initialize_main (&argc, &argv);
   set_program_name (argv[0]);
@@ -728,11 +1084,18 @@ main (int argc, char **argv)
       switch (optc)
         {
         case 'b':
-        case 'c':
           /* Build the byte list. */
           if (operating_mode != undefined_mode)
             FATAL_ERROR (_("only one type of list may be specified"));
           operating_mode = byte_mode;
+          spec_list_string = optarg;
+          break;
+
+        case 'c':
+          /* Build the character list. */
+          if (operating_mode != undefined_mode)
+            FATAL_ERROR (_("only one type of list may be specified"));
+          operating_mode = character_mode;
           spec_list_string = optarg;
           break;
 
@@ -747,10 +1110,38 @@ main (int argc, char **argv)
         case 'd':
           /* New delimiter. */
           /* Interpret -d '' to mean 'use the NUL byte as the delimiter.'  */
-          if (optarg[0] != '\0' && optarg[1] != '\0')
-            FATAL_ERROR (_("the delimiter must be a single character"));
-          delim = optarg[0];
-          delim_specified = true;
+            {
+#if HAVE_MBRTOWC
+              if(MB_CUR_MAX > 1)
+                {
+                  mbstate_t state;
+
+                  memset (&state, '\0', sizeof(mbstate_t));
+                  delimlen = mbrtowc (&wcdelim, optarg, strnlen(optarg, MB_LEN_MAX), &state);
+
+                  if (delimlen == (size_t)-1 || delimlen == (size_t)-2)
+                    ++force_singlebyte_mode;
+                  else
+                    {
+                      delimlen = (delimlen < 1) ? 1 : delimlen;
+                      if (wcdelim != L'\0' && *(optarg + delimlen) != '\0')
+                        FATAL_ERROR (_("the delimiter must be a single character"));
+                      memcpy (mbdelim, optarg, delimlen);
+                      mbdelim[delimlen] = '\0';
+                      if (delimlen == 1)
+                        delim = *optarg;
+                    }
+                }
+
+              if (MB_CUR_MAX <= 1 || force_singlebyte_mode)
+#endif
+                {
+                  if (optarg[0] != '\0' && optarg[1] != '\0')
+                    FATAL_ERROR (_("the delimiter must be a single character"));
+                  delim = (unsigned char) optarg[0];
+                }
+            delim_specified = true;
+          }
           break;
 
         case OUTPUT_DELIMITER_OPTION:
@@ -763,6 +1154,7 @@ main (int argc, char **argv)
           break;
 
         case 'n':
+          byte_mode_character_aware = 1;
           break;
 
         case 's':
@@ -802,15 +1194,34 @@ main (int argc, char **argv)
     }
 
   if (!delim_specified)
-    delim = '\t';
+    {
+      delim = '\t';
+#ifdef HAVE_MBRTOWC
+      wcdelim = L'\t';
+      mbdelim[0] = '\t';
+      mbdelim[1] = '\0';
+      delimlen = 1;
+#endif
+    }
 
   if (output_delimiter_string == NULL)
     {
-      static char dummy[2];
-      dummy[0] = delim;
-      dummy[1] = '\0';
-      output_delimiter_string = dummy;
-      output_delimiter_length = 1;
+#ifdef HAVE_MBRTOWC
+      if (MB_CUR_MAX > 1 && !force_singlebyte_mode)
+        {
+          output_delimiter_string = xstrdup(mbdelim);
+          output_delimiter_length = delimlen;
+        }
+
+      if (MB_CUR_MAX <= 1 || force_singlebyte_mode)
+#endif
+        {
+          static char dummy[2];
+          dummy[0] = delim;
+          dummy[1] = '\0';
+          output_delimiter_string = dummy;
+          output_delimiter_length = 1;
+        }
     }
 
   if (optind == argc)

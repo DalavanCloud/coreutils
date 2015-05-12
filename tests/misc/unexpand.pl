@@ -27,6 +27,14 @@ my $limits = getlimits ();
 
 my $prog = 'unexpand';
 
+# comment out next line to disable multibyte tests
+my $mb_locale = $ENV{LOCALE_FR_UTF8};
+! defined $mb_locale || $mb_locale eq 'none'
+ and $mb_locale = 'C';
+
+my $try = "Try \`$prog --help' for more information.\n";
+my $inval = "$prog: invalid byte, character or field list\n$try";
+
 my @Tests =
     (
      ['a1', {IN=> ' 'x 1 ."y\n"}, {OUT=> ' 'x 1 ."y\n"}],
@@ -91,6 +99,37 @@ my @Tests =
      ['obs-ovflo', "-$limits->{UINTMAX_OFLOW}", {IN=>''}, {OUT=>''},
       {EXIT => 1}, {ERR => "$prog: tab stop value is too large\n"}],
     );
+
+if ($mb_locale ne 'C')
+  {
+    # Duplicate each test vector, appending "-mb" to the test name and
+    # inserting {ENV => "LC_ALL=$mb_locale"} in the copy, so that we
+    # provide coverage for the distro-added multi-byte code paths.
+    my @new;
+    foreach my $t (@Tests)
+      {
+        my @new_t = @$t;
+        my $test_name = shift @new_t;
+
+        # Depending on whether unexpand is multi-byte-patched,
+        # it emits different diagnostics:
+        #   non-MB: invalid byte or field list
+        #   MB:     invalid byte, character or field list
+        # Adjust the expected error output accordingly.
+        if (grep {ref $_ eq 'HASH' && exists $_->{ERR} && $_->{ERR} eq $inval}
+            (@new_t))
+          {
+            my $sub = {ERR_SUBST => 's/, character//'};
+            push @new_t, $sub;
+            push @$t, $sub;
+          }
+        next if ($test_name =~ 'b-1');
+        push @new, ["$test_name-mb", @new_t, {ENV => "LC_ALL=$mb_locale"}];
+      }
+    push @Tests, @new;
+  }
+
+@Tests = triple_test \@Tests;
 
 my $save_temps = $ENV{DEBUG};
 my $verbose = $ENV{VERBOSE};

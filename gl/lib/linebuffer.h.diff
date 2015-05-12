@@ -1,0 +1,25 @@
+diff -urNp coreutils-8.23-orig/lib/linebuffer.h coreutils-8.23/lib/linebuffer.h
+--- coreutils-8.23-orig/lib/linebuffer.h        2014-05-29 14:05:50.000000000 +0200
++++ coreutils-8.23/lib/linebuffer.h     2014-07-22 13:45:52.700651881 +0200
+@@ -21,6 +21,11 @@
+ 
+ # include <stdio.h>
+ 
++/* Get mbstate_t.  */
++# if HAVE_WCHAR_H
++#  include <wchar.h>
++# endif
++
+ /* A 'struct linebuffer' holds a line of text. */
+ 
+ struct linebuffer
+@@ -28,6 +33,9 @@ struct linebuffer
+   size_t size;                  /* Allocated. */
+   size_t length;                /* Used. */
+   char *buffer;
++# if HAVE_WCHAR_H
++  mbstate_t state;
++# endif
+ };
+ 
+ /* Initialize linebuffer LINEBUFFER for use. */
