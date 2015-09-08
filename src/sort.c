@@ -2862,8 +2862,8 @@ getmonth_mb (const char *s, size_t len, char **ea)
   register int lo = 0, hi = MONTHS_PER_YEAR, result;
   char *tmp;
   size_t wclength, mblength;
-  const char **pp;
-  const wchar_t **wpp;
+  const char *pp;
+  const wchar_t *wpp;
   wchar_t *month_wcs;
   mbstate_t state;
 
@@ -2878,15 +2878,14 @@ getmonth_mb (const char *s, size_t len, char **ea)
 
   month = (char *) xmalloc (len + 1);
 
-  tmp = (char *) xmalloc (len + 1);
+  pp = tmp = (char *) xmalloc (len + 1);
   memcpy (tmp, s, len);
   tmp[len] = '\0';
-  pp = (const char **)&tmp;
-  month_wcs = (wchar_t *) xmalloc ((len + 1) * sizeof (wchar_t));
+  wpp = month_wcs = (wchar_t *) xmalloc ((len + 1) * sizeof (wchar_t));
   memset (&state, '\0', sizeof(mbstate_t));
 
-  wclength = mbsrtowcs (month_wcs, pp, len + 1, &state);
-  if (wclength == (size_t)-1 || *pp != NULL)
+  wclength = mbsrtowcs (month_wcs, &pp, len + 1, &state);
+  if (wclength == (size_t)-1 || pp != NULL)
     error (SORT_FAILURE, 0, _("Invalid multibyte input %s."), quote(s));
 
   for (i = 0; i < wclength; i++)
@@ -2899,10 +2898,8 @@ getmonth_mb (const char *s, size_t len, char **ea)
         }
     }
 
-  wpp = (const wchar_t **)&month_wcs;
-
-  mblength = wcsrtombs (month, wpp, len + 1, &state);
-  assert (mblength != (-1) && *wpp == NULL);
+  mblength = wcsrtombs (month, &wpp, len + 1, &state);
+  assert (mblength != (-1) && wpp == NULL);
 
   do
     {

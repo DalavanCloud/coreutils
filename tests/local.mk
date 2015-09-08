@@ -343,6 +343,7 @@ all_tests =					\
   tests/misc/sort-float.sh			\
   tests/misc/sort-mb-tests.sh			\
   tests/i18n/sort.sh				\
+  tests/i18n/sort-month.sh			\
   tests/misc/sort-merge.pl			\
   tests/misc/sort-merge-fdlimit.sh		\
   tests/misc/sort-month.sh			\
