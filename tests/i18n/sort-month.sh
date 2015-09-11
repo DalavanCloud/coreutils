@@ -14,9 +14,12 @@ export LC_ALL=en_US.UTF-8
 locale -k LC_CTYPE | grep -q "charmap.*UTF-8" \
   || skip_ "No UTF-8 locale available"
 
+# Note the use of ɑ here which expands to
+# a wider representation upon case conversion
+# which triggered an assertion in sort -M
 cat <<EOF > exp
 .
-a
+ɑ
 EOF
 
 

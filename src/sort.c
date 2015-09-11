@@ -2876,13 +2876,16 @@ getmonth_mb (const char *s, size_t len, char **ea)
   if (len == 0)
     return 0;
 
-  month = (char *) xmalloc (len + 1);
+  if (SIZE_MAX - len < 1)
+    xalloc_die ();
 
-  pp = tmp = (char *) xmalloc (len + 1);
+  month = (char *) xnmalloc (len + 1, MB_CUR_MAX);
+
+  pp = tmp = (char *) xnmalloc (len + 1, MB_CUR_MAX);
   memcpy (tmp, s, len);
   tmp[len] = '\0';
-  wpp = month_wcs = (wchar_t *) xmalloc ((len + 1) * sizeof (wchar_t));
-  memset (&state, '\0', sizeof(mbstate_t));
+  wpp = month_wcs = (wchar_t *) xnmalloc (len + 1, sizeof (wchar_t));
+  memset (&state, '\0', sizeof (mbstate_t));
 
   wclength = mbsrtowcs (month_wcs, &pp, len + 1, &state);
   if (wclength == (size_t)-1 || pp != NULL)
@@ -2898,7 +2901,7 @@ getmonth_mb (const char *s, size_t len, char **ea)
         }
     }
 
-  mblength = wcsrtombs (month, &wpp, len + 1, &state);
+  mblength = wcsrtombs (month, &wpp, (len + 1) * MB_CUR_MAX, &state);
   assert (mblength != (-1) && wpp == NULL);
 
   do
