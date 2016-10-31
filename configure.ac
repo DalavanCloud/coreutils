@@ -243,6 +243,9 @@ if test "$gl_single_binary" = 'symlinks'; then
 fi
 AM_CONDITIONAL([SINGLE_BINARY], [test "$gl_single_binary" != no])
 
+AC_OPENMP
+AC_SUBST(OPENMP_CFLAGS)
+
 AC_FUNC_FORK
 
 optional_bin_progs=
